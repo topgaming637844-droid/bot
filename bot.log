@@ -335,3 +335,13 @@ UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb0 in position 6: invalid 
 [2026-07-04 02:28:34] [INFO] [bot] [scraper.py:298]: تم جلب 1189 حلقة جديدة من الصفحة 1
 [2026-07-04 02:28:35] [INFO] [bot] [scraper.py:295]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
 [2026-07-04 02:28:35] [INFO] [bot] [scraper.py:308]: إجمالي الحلقات المستخرجة للأنمي one-piece: 1189
+[2026-07-04 02:38:17] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 02:38:17] [INFO] [bot] [scraper.py:245]: جاري جلب قائمة الحلقات للأنمي: one-piece
+[2026-07-04 02:38:18] [INFO] [bot] [scraper.py:309]: تم جلب 1189 حلقة جديدة من الصفحة 1
+[2026-07-04 02:38:19] [INFO] [bot] [scraper.py:306]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
+[2026-07-04 02:38:19] [INFO] [bot] [scraper.py:319]: إجمالي الحلقات المستخرجة للأنمي one-piece: 1189
+[2026-07-04 02:38:37] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 02:38:38] [INFO] [bot] [scraper.py:245]: جاري جلب قائمة الحلقات للأنمي: one-piece
+[2026-07-04 02:38:39] [INFO] [bot] [scraper.py:309]: تم جلب 1189 حلقة جديدة من الصفحة 1
+[2026-07-04 02:38:40] [INFO] [bot] [scraper.py:306]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
+[2026-07-04 02:38:40] [INFO] [bot] [scraper.py:319]: إجمالي الحلقات المستخرجة للأنمي one-piece: 1189

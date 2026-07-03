@@ -21,6 +21,23 @@ async def main():
         logger.error(f"Configuration Error: {e}")
         sys.exit(1)
 
+    # 1.5. Test Proxy Connectivity if configured
+    if config.PROXY_URL:
+        logger.info("Testing proxy connectivity...")
+        try:
+            from aiohttp_socks import ProxyConnector
+            import aiohttp
+            connector = ProxyConnector.from_url(config.PROXY_URL)
+            async with aiohttp.ClientSession(connector=connector) as test_session:
+                async with test_session.get("https://graphql.anilist.co", timeout=5) as test_resp:
+                    logger.info(f"Proxy connectivity check succeeded with status {test_resp.status}!")
+        except Exception as e:
+            logger.warning(
+                f"SOCKS5 proxy health check failed: {e}. "
+                "Disabling proxy and falling back to direct connections."
+            )
+            config.PROXY_URL = None
+
     # 2. Boot and migrate Database schema
     logger.info("Initializing database schema...")
     await init_db()

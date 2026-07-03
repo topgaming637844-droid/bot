@@ -13,19 +13,35 @@ sys.path.append(str(project_root))
 from config import config
 # Override database URL to a local sqlite database for local verification
 config.DATABASE_URL = "sqlite+aiosqlite:///test_bot.db"
-# Bypass proxy to run direct web queries
-config.PROXY_URL = None
+
+# Restore original PROXY_URL from environment for testing the health check fallback
+import os
+config.PROXY_URL = os.getenv("PROXY_URL", "").strip() or None
 
 print(f"Configured DATABASE_URL override: {config.DATABASE_URL}")
-print("Configured PROXY_URL override: None")
+print(f"Testing with PROXY_URL from .env: {config.PROXY_URL}")
 
 from app.database.connection import init_db, AsyncSessionLocal
 from app.database.models import BotAdmin
 from app.utils.auth import is_admin
 from app.services.scraper import get_episodes_scraper
 
+async def run_proxy_check():
+    if config.PROXY_URL:
+        print("Testing proxy connectivity inside async loop...")
+        try:
+            from aiohttp_socks import ProxyConnector
+            import aiohttp
+            connector = ProxyConnector.from_url(config.PROXY_URL)
+            async with aiohttp.ClientSession(connector=connector) as test_session:
+                async with test_session.get("https://graphql.anilist.co", timeout=5) as test_resp:
+                    print(f"Proxy connectivity check succeeded with status {test_resp.status}!")
+        except Exception as e:
+            print(f"SOCKS5 proxy health check failed: {e}. Disabling proxy and falling back to direct connections.")
+            config.PROXY_URL = None
+
 async def test_database():
-    print("--- TESTING DATABASE INITIALIZATION ---")
+    print("\n--- TESTING DATABASE INITIALIZATION ---")
     await init_db()
     
     print("\n--- TESTING BOTADMIN OPERATIONS ---")
@@ -86,6 +102,7 @@ async def test_scraper():
 
 async def main():
     try:
+        await run_proxy_check()
         await test_database()
         await test_scraper()
         print("\nVerification completed successfully!")

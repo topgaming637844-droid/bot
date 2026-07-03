@@ -192,42 +192,53 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
         return [{"title": f"{title} (TV)", "slug": "mock-anime-slug"}]
 
     search_url = f"https://witanime.pics/?search_param=anime&s={quote(title)}"
-    connector = get_connector()
     
-    async with aiohttp.ClientSession(connector=connector) as session:
-        try:
-            html = await get_html(search_url, session)
-            soup = BeautifulSoup(html, "html.parser")
+    for attempt in range(2):
+        connector = get_connector()
+        if attempt > 0:
+            logger.info("Retrying WitAnime search directly (bypassing proxy)...")
             
-            details = soup.select(".cat-post-details h2 a")
-            logger.info(f"Found {len(details)} posts matching search query.")
-            
-            # Resolve parent series concurrently
-            resolve_tasks = []
-            direct_results = []
-            seen_slugs = set()
-            
-            for a in details:
-                href = a.get("href")
-                if "/anime/" in href:
-                    slug = href.split("/anime/")[1].strip("/")
-                    if slug not in seen_slugs:
-                        seen_slugs.add(slug)
-                        direct_results.append({"title": a.text.strip(), "slug": slug})
-                elif "/episode/" in href:
-                    resolve_tasks.append(resolve_anime_info(href, session))
-                    
-            resolved = await asyncio.gather(*resolve_tasks)
-            for item in resolved:
-                if item and item["slug"] not in seen_slugs:
-                    seen_slugs.add(item["slug"])
-                    direct_results.append(item)
-                    
-            logger.info(f"Resolved {len(direct_results)} unique anime series from search results.")
-            return direct_results[:10]  # Limit to top 10 results
-        except Exception:
-            logger.exception("Error in process while searching anime scraper")
-            return []
+        async with aiohttp.ClientSession(connector=connector) as session:
+            try:
+                html = await get_html(search_url, session)
+                soup = BeautifulSoup(html, "html.parser")
+                
+                details = soup.select(".cat-post-details h2 a")
+                logger.info(f"Found {len(details)} posts matching search query.")
+                
+                # Resolve parent series concurrently
+                resolve_tasks = []
+                direct_results = []
+                seen_slugs = set()
+                
+                for a in details:
+                    href = a.get("href")
+                    if "/anime/" in href:
+                        slug = href.split("/anime/")[1].strip("/")
+                        if slug not in seen_slugs:
+                            seen_slugs.add(slug)
+                            direct_results.append({"title": a.text.strip(), "slug": slug})
+                    elif "/episode/" in href:
+                        resolve_tasks.append(resolve_anime_info(href, session))
+                        
+                resolved = await asyncio.gather(*resolve_tasks)
+                for item in resolved:
+                    if item and item["slug"] not in seen_slugs:
+                        seen_slugs.add(item["slug"])
+                        direct_results.append(item)
+                        
+                logger.info(f"Resolved {len(direct_results)} unique anime series from search results.")
+                return direct_results[:10]  # Limit to top 10 results
+            except Exception as e:
+                if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
+                    logger.warning(f"Proxy failure during WitAnime search: {e}. Disabling proxy.")
+                    config.PROXY_URL = None
+                    if attempt == 0:
+                        continue
+                logger.exception("Error in process while searching anime scraper")
+                break
+                
+    return []
 
 async def get_episodes_scraper(anime_slug: str) -> List[Dict[str, Any]]:
     """Retrieves the list of episodes for a WitAnime series slug, crawling pagination if present."""

@@ -68,60 +68,75 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
     """
     logger.info(f"Starting search on AniList for query: {query}")
     url = "https://graphql.anilist.co"
-    connector = get_connector()
     
-    if config.PROXY_URL:
-        logger.info(f"Proxy used for request: {config.PROXY_URL}")
-
-    # 1. Try direct media search
-    payload = {
-        "query": MEDIA_QUERY,
-        "variables": {"search": query}
-    }
-    
-    results = []
-    
-    async with aiohttp.ClientSession(connector=connector) as session:
-        try:
-            logger.info("Scraping page: https://graphql.anilist.co (Direct Media Query)")
-            async with session.post(url, json=payload, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    media_list = data.get("data", {}).get("Page", {}).get("media", [])
-                    for media in media_list:
-                        results.append(parse_media_node(media))
-                else:
-                    logger.error(f"Error in process: AniList media query returned status {response.status}")
-        except Exception:
-            logger.exception("Error in process while querying AniList media API")
+    for attempt in range(2):
+        connector = get_connector()
+        if attempt > 0:
+            logger.info("Retrying AniList search directly (bypassing proxy)...")
             
-        # 2. If no direct media found, fallback to character search
-        if not results:
-            logger.info(f"Direct media search returned 0 results. Falling back to character query for: {query}")
-            payload = {
-                "query": CHARACTER_QUERY,
-                "variables": {"search": query}
-            }
-            try:
-                logger.info("Scraping page: https://graphql.anilist.co (Character Query)")
-                async with session.post(url, json=payload, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        characters = data.get("data", {}).get("Page", {}).get("characters", [])
-                        seen_ids = set()
-                        for char in characters:
-                            media_nodes = char.get("media", {}).get("nodes", [])
-                            for media in media_nodes:
-                                if media["id"] not in seen_ids:
-                                    results.append(parse_media_node(media))
-                                    seen_ids.add(media["id"])
-                    else:
-                        logger.error(f"Error in process: AniList character query returned status {response.status}")
-            except Exception:
-                logger.exception("Error in process while querying AniList characters API")
-                
-    logger.info(f"AniList search returned {len(results)} normalized titles.")
-    return results
+        payload = {
+            "query": MEDIA_QUERY,
+            "variables": {"search": query}
+        }
+        results = []
+        
+        try:
+            async with aiohttp.ClientSession(connector=connector) as session:
+                try:
+                    logger.info("Scraping page: https://graphql.anilist.co (Direct Media Query)")
+                    async with session.post(url, json=payload, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            media_list = data.get("data", {}).get("Page", {}).get("media", [])
+                            for media in media_list:
+                                results.append(parse_media_node(media))
+                        else:
+                            logger.error(f"Error in process: AniList media query returned status {response.status}")
+                except Exception as e:
+                    if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
+                        logger.warning(f"Proxy failure during AniList media query: {e}. Disabling proxy.")
+                        config.PROXY_URL = None
+                        raise e
+                    logger.exception("Error in process while querying AniList media API")
+                    
+                # 2. If no direct media found, fallback to character search
+                if not results:
+                    logger.info(f"Direct media search returned 0 results. Falling back to character query for: {query}")
+                    payload_char = {
+                        "query": CHARACTER_QUERY,
+                        "variables": {"search": query}
+                    }
+                    try:
+                        logger.info("Scraping page: https://graphql.anilist.co (Character Query)")
+                        async with session.post(url, json=payload_char, timeout=10) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                characters = data.get("data", {}).get("Page", {}).get("characters", [])
+                                seen_ids = set()
+                                for char in characters:
+                                    media_nodes = char.get("media", {}).get("nodes", [])
+                                    for media in media_nodes:
+                                        if media["id"] not in seen_ids:
+                                            results.append(parse_media_node(media))
+                                            seen_ids.add(media["id"])
+                            else:
+                                logger.error(f"Error in process: AniList character query returned status {response.status}")
+                    except Exception as e:
+                        if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
+                            logger.warning(f"Proxy failure during AniList character query: {e}. Disabling proxy.")
+                            config.PROXY_URL = None
+                            raise e
+                        logger.exception("Error in process while querying AniList characters API")
+                        
+            logger.info(f"AniList search returned {len(results)} normalized titles.")
+            return results
+            
+        except Exception:
+            if config.PROXY_URL is None and attempt == 0:
+                continue
+            break
+            
+    return []
 
 def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts and normalizes media details from a GraphQL node."""
