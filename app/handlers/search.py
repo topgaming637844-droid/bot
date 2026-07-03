@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aiogram.filters import StateFilter
-from app.database.models import SearchCache, UserFavorites
+from app.database.models import SearchCache, UserFavorites, EpisodeCache
 from app.services.anilist import search_anilist
-from app.services.scraper import search_anime_scraper
+from app.services.scraper import search_anime_scraper, get_episodes_scraper
 from app.utils.logging_config import logger
 
 router = Router(name="search")

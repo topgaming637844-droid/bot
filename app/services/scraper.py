@@ -101,7 +101,7 @@ def unpack_dean_edwards(packed_text: str) -> str:
 
 async def get_html(url: str, session: aiohttp.ClientSession) -> str:
     """Fetches HTML content with custom headers and optional proxy."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.you/"}
+    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
     proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
     logger.info(f"Scraping page: {url}{proxy_str}")
     
@@ -121,7 +121,7 @@ async def get_html(url: str, session: aiohttp.ClientSession) -> str:
 
 async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Optional[Dict[str, str]]:
     """Resolves parent anime details page from an episode watch page URL."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.you/"}
+    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
     try:
         async with session.get(ep_url, headers=headers, timeout=10) as resp:
             if resp.status == 200:
@@ -139,7 +139,7 @@ async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Opt
 
 async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) -> Dict[str, str]:
     """Parses master .m3u8 playlist to extract quality variant URLs."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.you/"}
+    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
     proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
     logger.info(f"Scraping page: {master_url}{proxy_str}")
     
@@ -321,7 +321,7 @@ async def get_episodes_scraper(anime_slug: str) -> List[Dict[str, Any]]:
 
 async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession) -> Optional[str]:
     """Resolves and extracts .m3u8 master playlist using custom player unpacker."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.you/"}
+    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
     
     # Try multiple known mirror player domains if it's hglink.to
     target_urls = [embed_url]
