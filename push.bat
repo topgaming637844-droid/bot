@@ -28,7 +28,7 @@ git commit -m "%commit_msg%"
 
 echo.
 echo Pushing changes to GitHub...
-git push
+git push -u origin main
 
 echo.
 echo ==============================================
