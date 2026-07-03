@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibePlayer - Fast Streaming with FullHD</title>
+    <link rel="stylesheet" href="/public/css/netflix.css">
+    <style>
+        html, body, #player, #jwplayer {
+            width: 100% !important;
+            height: 100% !important;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+<div id="player"></div>
+
+<script src="/public/jw46/jwplayer.js"></script>
+<script src="/public/jw46/provider.hlsjs.js"></script>
+<script src="/public/jw46/provider.html5.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const wrapper = document.getElementById('player');
+        const src = "https://vivibebe.site/public/stream/b1b1bcf0e7bbfcbe/master.m3u8";
+        const title = "VibePlayer - Fast Streaming with FullHD";
+        const poster = "https://vivibebe.site/public/thumb/b1b1bcf0e7bbfcbe_1.jpg";
+        const subtitle = "";
+        let tracks = [];
+        if (subtitle) {
+            tracks.push({
+                file: subtitle,
+                kind: "captions",
+                label: "English",
+                default: true
+            });
+        }
+        wrapper.innerHTML = `<div id="jwplayer"></div>`;
+
+        const player = jwplayer("jwplayer");
+        const objSetup = {
+            key: "ITWMv7t88JGzI0xPwW8I0+LveiXX9SWbfdmt0ArUSyc=",
+            aspectratio: "16:9",
+            width: "100%",
+            playlist: [{
+                title: title,
+                image: poster || undefined,
+                sources: [{
+                    file: src
+                }],
+                tracks: tracks
+            }],
+            type: "hls",
+            playbackRateControls: true,
+            playbackRates: [0.25, 0.75, 1, 1.25, 1.5, 2],
+            pipIcon: "enabled",
+            skin: {
+                name: "netflix"
+            },
+            volume: 80,
+            mute: false,
+            autostart: false,
+            repeat: false,
+            preload: "metadata",
+            controls: true,
+            responsive: true,
+            stretching: "uniform",
+            displaytitle: false,
+            displaydescription: false,
+            "cast": {
+                "appid": "00000000"
+            },
+        };
+
+        player.setup(objSetup);
+        const videoKey = "vibeplayer_pos_" + "b1b1bcf0e7bbfcbe";
+
+        player.on('ready', function() {
+            const playerContainer = player.getContainer();
+            const buttonContainer = playerContainer.querySelector(".jw-button-container");
+            const rewindControlBarButton = buttonContainer.querySelector(".jw-icon-rewind");
+
+            const forwardControlBarButton = rewindControlBarButton.cloneNode(true);
+            forwardControlBarButton.style.transform = "scaleX(-1)";
+            forwardControlBarButton.ariaLabel = "Forward 10 Seconds";
+            rewindControlBarButton.parentNode.insertBefore(forwardControlBarButton, rewindControlBarButton.nextElementSibling);
+
+            forwardControlBarButton.onclick = function() {
+                player.seek(player.getPosition() + 10);
+            };
+
+            const saved = localStorage.getItem(videoKey);
+
+            if (saved) {
+                const pos = parseFloat(saved);
+
+                if (pos > 5) {
+                    player.seek(pos);
+                }
+            }
+        });
+
+        player.on('error', function(event) {
+            Swal.fire({
+                title: 'Error',
+                html: "The video you are trying to watch is currently unavailable. Please try again later or select another source.",
+                icon: 'error',
+                confirmButtonText: 'Close'
+            });
+            console.error("JW Player Error:", event);
+        });
+
+        player.on("time", function(e) {
+
+            if (e.position > 5) {
+                localStorage.setItem(videoKey, e.position);
+            }
+
+        });
+        player.on("complete", function () {
+            localStorage.removeItem(videoKey);
+        });
+
+        player.on("error", function (e) {
+            console.error("JW Player error:", e);
+        });
+
+        player.on("setupError", function (e) {
+            console.error("JW Player setup error:", e);
+        });
+    });
+</script>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LDTM9NP2T1"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-LDTM9NP2T1');
+</script>
+<script>(function(s){s.dataset.zone='10881046',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
+
+</body>
+</html>
