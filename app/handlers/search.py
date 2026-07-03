@@ -6,6 +6,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aiogram.filters import StateFilter
 from app.database.models import SearchCache, UserFavorites
 from app.services.anilist import search_anilist
 from app.services.scraper import search_anime_scraper
@@ -17,7 +18,7 @@ class SearchStates(StatesGroup):
 
 CACHE_EXPIRATION_HOURS = 24
 
-@router.message(F.text & ~F.text.startswith("/"))
+@router.message(F.text & ~F.text.startswith("/"), StateFilter(None))
 async def handle_anime_search(message: Message, db_session: AsyncSession, state: FSMContext):
     """
     Handles search queries. Queries database cache first,
