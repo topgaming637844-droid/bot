@@ -1,0 +1,37 @@
+Title of anime page: فيلم Naruto Movie 2: Dai Gekitotsu! Maboroshi no Chiteiiseki Dattebayo! مترجم - WitAnime
+
+1: href='https://witanime.you' | text=''
+2: href='#' | text='القائمة'
+3: href='https://witanime.you/' | text='الرئيسية'
+4: href='https://witanime.you/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a7%d9%86%d9%85%d9%8a/' | text='قائمة الأنمي'
+5: href='https://witanime.you/anime-type/movie/' | text='أفلام الأنمي'
+6: href='https://witanime.you/anime-season/ربيع-2026/' | text='أنميات الموسم'
+7: href='https://witanime.you/%d9%85%d9%88%d8%a7%d8%b9%d9%8a%d8%af-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a7%d8%aa/' | text='مواعيد الحلقات'
+8: href='https://witanime.you/contact-us/' | text='إتصل بنا'
+9: href='https://witanime.you/wp-login.php' | text='تسجيل الدخول'
+10: href='https://witanime.you/wp-login.php?action=lostpassword&redirect_to=https://witanime.you' | text='نسيت كلمة المرور؟'
+11: href='None' | text=''
+12: href='None' | text=''
+13: href='None' | text='إغلاق'
+14: href='https://witanime.you/anime-genre/%d8%b4%d9%88%d9%86%d9%8a%d9%86/' | text='شونين'
+15: href='https://witanime.you/anime-genre/%d9%85%d8%ba%d8%a7%d9%85%d8%b1%d8%a7%d8%aa/' | text='مغامرات'
+16: href='https://witanime.you/anime-genre/%d8%a3%d9%83%d8%b4%d9%86/' | text='أكشن'
+17: href='https://witanime.you/anime-genre/%d8%ae%d9%8a%d8%a7%d9%84/' | text='خيال'
+18: href='https://witanime.you/anime-type/movie/' | text='Movie'
+19: href='https://witanime.you/anime-status/%d9%85%d9%83%d8%aa%d9%85%d9%84/' | text='مكتمل'
+20: href='https://witanime.you/anime-season/%d8%b5%d9%8a%d9%81-2005/' | text='صيف 2005'
+21: href='https://myanimelist.net/anime/936/Naruto_Movie_2__Dai_Gekitotsu_Maboroshi_no_Chiteiiseki_Dattebayo' | text='صفحة الأنمي على موقع MAL'
+22: href='' | text=''
+23: href='' | text=''
+24: href='' | text=''
+25: href='' | text=''
+26: href='' | text=''
+27: href='' | text=''
+28: href='/dmca/' | text='DMCA'
+29: href='/contact-us/' | text='Contact Us'
+30: href='https://www.witanime.net/' | text='WITANIME'
+
+Div elements containing certain class names:
+  Class: ['anime-external-links'] | ID: None
+  Class: ['search-for-episode'] | ID: None
+  Class: ['episodes-list-content'] | ID: None

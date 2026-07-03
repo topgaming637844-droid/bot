@@ -1,0 +1,180 @@
+
+Card 1:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 19/10/2024
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="فيلم Naruto Movie 3: Dai Koufun! Mikazuki Jima no Animaru Panic Dattebayo!" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 2:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 19/10/2024
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="فيلم Naruto Movie 2: Dai Gekitotsu! Maboroshi no Chiteiiseki Dattebayo!" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 3:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 19/10/2024
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="فيلم Naruto Movie 1: Dai Katsugeki!! Yuki Hime Ninpouchou Dattebayo!" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 4:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 16/10/2024
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="فيلم Naruto: Shippuuden Movie 1" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 5:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 166" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 6:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 165" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 7:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 164" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 8:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 163" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 9:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 162" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================
+
+Card 10:
+<div class="cat-post-thumbnail clearfix">
+ <div class="thumbnail-date-label">
+  <i aria-hidden="true" class="fa fa-calendar">
+  </i>
+  نُشر في 08/08/2023
+ </div>
+ <div class="post-category-thumbnail">
+  <div class="hover ehover6">
+   <img alt="Boruto: Naruto Next Generations الحلقة 161" class="img-responsive" src="https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/images/thumbnail-default-category.png"/>
+   <div class="overlay">
+   </div>
+  </div>
+ </div>
+</div>
+
+==================================================

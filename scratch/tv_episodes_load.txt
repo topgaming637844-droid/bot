@@ -1,0 +1,15 @@
+Class: ['search-for-episode'] | ID: None
+<div class="search-for-episode">
+ <div class="form-group">
+  <input class="form-control" id="inputEpisode" onkeyup="getFilteredEpisode()" placeholder="البحث عن حلقة" type="text"/>
+ </div>
+</div>
+
+--------------------------------------------------
+Class: ['episodes-list-content'] | ID: None
+<div class="episodes-list-content">
+ <div class="row display-flex" id="DivEpisodesList">
+ </div>
+</div>
+
+--------------------------------------------------

@@ -1,0 +1,104 @@
+Found 'renderModuleContent' in 3 lines.
+
+Match at line 5:
+  1: (function() {
+  2:     var _m1 = "23a9", _m2 = "7133-caf3-", _m3 = "4eb4-9466-", _m4 = "93d0a4ff8198";
+  3:     var FRAMEWORK_HASH = "";
+  4:     
+  5:     function renderModuleContent(elementNode) {
+  6:         var moduleKey = elementNode.getAttribute("data-server-id");
+  7:         var resourceData = window.resourceRegistry[moduleKey];
+  8:         var configSettings = window.configRegistry[moduleKey];
+  9:         
+  10:         if (resourceData && configSettings) {
+  11:             if (!FRAMEWORK_HASH) {
+  12:                 FRAMEWORK_HASH = _m1 + _m2 + _m3 + _m4;
+  13:                 _m1 = _m2 = _m3 = _m4 = null;
+  14:             }
+  15:             
+  16:             resourceData = resourceData.split('').reverse().join('');
+  17:             resourceData = resourceData.replace(/[^A-Za-z0-9+/=]/g, '');
+  18:             
+  19:             var paramOffset = getParameterOffset(configSettings);
+  20:             var decodedResource = atob(resourceData).slice(0, -paramOffset);
+  21:             
+  22:             var resourcePattern = /^https:\/\/yonaplay\.net\/embed\.php\?id=\d+$/;
+  23:             var resolvedResource = resourcePattern.test(decodedResource) ? 
+  24:                 decodedResource + "&apiKey=" + FRAMEWORK_HASH : decodedResource;
+  25:             
+  26:             var contentContainer = document.getElementById("iframe-container");
+  27:             
+  28:             // Hide the instruction text
+  29:             var instructionText = document.getElementById("server-instruction");
+  30:             if (instructionText) {
+  31:                 instructionText.style.display = "none";
+  32:             }
+  33:             
+  34:             contentContainer.innerHTML = "";
+  35:             
+  36:             var contentFrame = document.createElement("iframe");
+  37:             contentFrame.width = "100%";
+  38:             contentFrame.height = "100%";
+  39:             contentFrame.src = resolvedResource;
+  40:             contentFrame.frameBorder = "0";
+  41:             contentFrame.allowFullscreen = true;
+  42:             
+  43:             var restrictedDomains = ["www.mp4upload.com", "www.yourupload.com", "videa.hu"];
+  44:             var resourceDomain;
+
+Match at line 76:
+  71:     function registerModuleListeners() {
+  72:         var moduleSelectors = document.querySelectorAll("#episode-servers a");
+  73:         moduleSelectors.forEach(function(selector) {
+  74:             selector.addEventListener("click", function(event) {
+  75:                 event.preventDefault();
+  76:                 renderModuleContent(this);
+  77:             });
+  78:         });
+  79:     }
+  80:     
+  81:     function displayModuleOptions() {
+  82:         var optionsContainer = document.getElementById("episode-servers");
+  83:         if (optionsContainer) {
+  84:             optionsContainer.style.display = "block";
+  85:         }
+  86:     }
+  87:     
+  88:     function init() {
+  89:         // Show instruction text initially - no auto-loading
+  90:         var instructionText = document.getElementById("server-instruction");
+  91:         if (instructionText) {
+  92:             instructionText.style.display = "flex";
+  93:         }
+  94:         
+  95:         // Clear any iframe content initially
+  96:         var contentContainer = document.getElementById("iframe-container");
+  97:         var existingIframe = contentContainer.querySelector("iframe");
+  98:         if (existingIframe) {
+  99:             existingIframe.remove();
+  100:         }
+  101:         
+  102:         displayModuleOptions();
+  103:         registerModuleListeners();
+  104:     }
+  105:     
+  106:     window.init = init;
+  107:     
+  108:     window.loadIframe = function(element) {
+  109:         renderModuleContent(element);
+  110:     };
+  111:     
+  112:     document.addEventListener("DOMContentLoaded", init);
+  113: })();
+
+Match at line 109:
+  104:     }
+  105:     
+  106:     window.init = init;
+  107:     
+  108:     window.loadIframe = function(element) {
+  109:         renderModuleContent(element);
+  110:     };
+  111:     
+  112:     document.addEventListener("DOMContentLoaded", init);
+  113: })();

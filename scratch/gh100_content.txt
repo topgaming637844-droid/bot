@@ -1,0 +1,14 @@
+Found 'loadIframe' in 1 lines.
+
+Match at line 108:
+  103:         registerModuleListeners();
+  104:     }
+  105:     
+  106:     window.init = init;
+  107:     
+  108:     window.loadIframe = function(element) {
+  109:         renderModuleContent(element);
+  110:     };
+  111:     
+  112:     document.addEventListener("DOMContentLoaded", init);
+  113: })();

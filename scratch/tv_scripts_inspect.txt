@@ -1,0 +1,20 @@
+Script 1: inline, length=1263
+  {"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://witanime.you/#website","url":"https://witanime.you/","name":"WitAnime","d
+Script 2: inline, length=2110
+Script 3: src='https://witanime.you/wp-includes/js/jquery/jquery.min.js'
+Script 4: src='https://witanime.you/wp-includes/js/jquery/jquery-migrate.min.js'
+Script 5: src='https://www.googletagmanager.com/gtag/js?id=G-ZVB2E4FQBQ'
+Script 6: inline, length=153
+Script 7: src='//rt.tinkledtertium.com/rOH6wm3gfazPQI/137297'
+Script 8: inline, length=117347
+  var processedEpisodeData = 'LgN6Jw0YJQxAbQ9EfWhNaTQfPnQPexAQMjEXdCV5OkMCESwoFhwqDBw2WhMQZQQ7KB49MlAFVwYpMxE6FnsIDQcNLCZVGyIRRmJSAyIvEyo1BD04RnRdAH5kBX
+Script 9: src='https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js'
+Script 10: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/bootstrap.min.js'
+Script 11: inline, length=193
+Script 12: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/theme-scripts.js'
+Script 13: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/gh100.js'
+Script 14: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/rd.js'
+Script 15: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/px9.js'
+Script 16: src='https://witanime.you/wp-content/themes/Anime-Online-Theme/assets/js/rnd.js'
+Script 17: src='https://witanime.you/wp-includes/js/wp-embed.min.js'
+Script 18: inline, length=902

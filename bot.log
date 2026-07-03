@@ -244,3 +244,74 @@ UnicodeDecodeError: 'utf-8' codec can't decode byte 0xb0 in position 6: invalid 
 [2026-07-03 17:27:23] [INFO] [bot] [test_services.py:84]: [TEST] SUCCESS: Output file has valid MPEG-TS sync byte (0x47)!
 [2026-07-03 17:27:23] [INFO] [bot] [test_services.py:151]: [SUCCESS] AniNeko Scraper & HLS Wrapper validation PASSED!
 [2026-07-03 17:27:23] [INFO] [bot] [test_services.py:162]: === VERIFICATION COMPLETED ===
+[2026-07-03 17:37:21] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:37:36] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:37:50] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:38:04] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:38:21] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:38:47] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:40:25] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:40:49] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:41:16] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:41:33] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:43:51] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:44:09] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:44:48] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:45:07] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:45:23] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:45:59] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:51:16] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:51:53] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:52:35] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:53:50] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:54:59] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:57:30] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:58:00] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:58:50] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 17:59:14] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:19:06] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:20:36] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:22:06] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:22:21] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:22:37] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:22:55] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:24:16] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-03 18:24:20] [INFO] [bot] [test_services.py:105]: === STARTING LIVE WITANIME MIGRATION & PARALLEL SPEED VERIFICATION ===
+[2026-07-03 18:24:20] [INFO] [bot] [test_services.py:108]: --- 1. Testing Database Init ---
+[2026-07-03 18:24:20] [INFO] [bot] [test_services.py:112]: --- 2. Testing AniList GraphQL ---
+[2026-07-03 18:24:20] [INFO] [bot] [anilist.py:69]: Starting search on AniList for query: Naruto
+[2026-07-03 18:24:20] [INFO] [bot] [anilist.py:74]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:20] [INFO] [bot] [anilist.py:86]: Scraping page: https://graphql.anilist.co (Direct Media Query)
+[2026-07-03 18:24:21] [INFO] [bot] [anilist.py:123]: AniList search returned 5 normalized titles.
+[2026-07-03 18:24:21] [INFO] [bot] [test_services.py:119]: [SUCCESS] AniList resolved: Naruto (ID: 20)
+[2026-07-03 18:24:21] [INFO] [bot] [test_services.py:122]: --- 3. Testing WitAnime Search Scraper ---
+[2026-07-03 18:24:21] [INFO] [bot] [scraper.py:189]: Starting search for anime: Naruto
+[2026-07-03 18:24:21] [INFO] [bot] [scraper.py:106]: Scraping page: https://witanime.pics/?search_param=anime&s=Naruto via proxy socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:21] [INFO] [bot] [scraper.py:109]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:23] [INFO] [bot] [scraper.py:203]: Found 10 posts matching search query.
+[2026-07-03 18:24:25] [INFO] [bot] [scraper.py:226]: Resolved 5 unique anime series from search results.
+[2026-07-03 18:24:25] [INFO] [bot] [test_services.py:128]: [SUCCESS] WitAnime matched slug: 'naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo' | Title: 'Naruto Movie 3: Dai Koufun! Mikazuki Jima no Animaru Panic Dattebayo!'
+[2026-07-03 18:24:25] [INFO] [bot] [test_services.py:131]: --- 4. Testing WitAnime Episode Scraper ---
+[2026-07-03 18:24:25] [INFO] [bot] [scraper.py:234]: Fetching episodes list for anime slug: naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo
+[2026-07-03 18:24:25] [INFO] [bot] [scraper.py:106]: Scraping page: https://witanime.pics/anime/naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo/ via proxy socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:25] [INFO] [bot] [scraper.py:109]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:27] [INFO] [bot] [scraper.py:275]: Parsed 1 episodes for anime: naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo
+[2026-07-03 18:24:27] [INFO] [bot] [test_services.py:136]: [SUCCESS] WitAnime parsed 1 episodes.
+[2026-07-03 18:24:27] [INFO] [bot] [test_services.py:138]: First Episode details: {'ep_number': '1', 'play_url': 'https://witanime.pics/episode/%d9%81%d9%8a%d9%84%d9%85-naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo/'}
+[2026-07-03 18:24:27] [INFO] [bot] [test_services.py:141]: --- 5. Testing Download Links Scraper ---
+[2026-07-03 18:24:27] [INFO] [bot] [scraper.py:328]: Scraping download links from watch page: https://witanime.pics/episode/%d9%81%d9%8a%d9%84%d9%85-naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo/
+[2026-07-03 18:24:27] [INFO] [bot] [scraper.py:106]: Scraping page: https://witanime.pics/episode/%d9%81%d9%8a%d9%84%d9%85-naruto-movie-3-dai-koufun-mikazuki-jima-no-animaru-panic-dattebayo/ via proxy socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:27] [INFO] [bot] [scraper.py:109]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:29] [INFO] [bot] [scraper.py:295]: Attempting to resolve embed playlist from: https://hanerix.com/e/5rzzsm2fl9b9
+[2026-07-03 18:24:31] [INFO] [bot] [scraper.py:309]: Resolved streamwish mirror HLS stream: https://vCVkQwY2zRcK.premilkyway.com/hls2/01/12438/5rzzsm2fl9b9_o/master.m3u8?t=f4-Rq6nnsvdmh5LmD2A5hCRK9w5iWMqfN_2tgafwkrk&s=1783092270&e=129600&f=62193562&srv=z6YT6wwf&i=0.4&sp=500&p1=z6YT6wwf&p2=z6YT6wwf&asn=55286
+[2026-07-03 18:24:31] [INFO] [bot] [scraper.py:144]: Scraping page: https://vCVkQwY2zRcK.premilkyway.com/hls2/01/12438/5rzzsm2fl9b9_o/master.m3u8?t=f4-Rq6nnsvdmh5LmD2A5hCRK9w5iWMqfN_2tgafwkrk&s=1783092270&e=129600&f=62193562&srv=z6YT6wwf&i=0.4&sp=500&p1=z6YT6wwf&p2=z6YT6wwf&asn=55286 via proxy socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:31] [INFO] [bot] [scraper.py:147]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:33] [INFO] [bot] [scraper.py:182]: Parsed qualities from master playlist: ['1080p']
+[2026-07-03 18:24:33] [INFO] [bot] [scraper.py:386]: Resolved 1 download link qualities: ['1080p']
+[2026-07-03 18:24:33] [INFO] [bot] [test_services.py:146]: [SUCCESS] Resolved streaming qualities: ['1080p']
+[2026-07-03 18:24:33] [INFO] [bot] [test_services.py:149]: --- 6. Testing Parallel HLS Size Estimation & Concurrent Downloads ---
+[2026-07-03 18:24:33] [INFO] [bot] [downloader.py:46]: Proxy used for request: socks5://yzjbjptm:mxykfsyptk4x@38.154.203.95:5863
+[2026-07-03 18:24:33] [INFO] [bot] [downloader.py:52]: Estimating HLS stream size for playlist: https://vCVkQwY2zRcK.premilkyway.com/hls2/01/12438/5rzzsm2fl9b9_o/index-v1-a1.m3u8?t=f4-Rq6nnsvdmh5LmD2A5hCRK9w5iWMqfN_2tgafwkrk&s=1783092270&e=129600&f=62193562&srv=z6YT6wwf&i=0.4&sp=500&p1=z6YT6wwf&p2=z6YT6wwf&asn=55286
+[2026-07-03 18:24:46] [INFO] [bot] [downloader.py:89]: HLS size estimation: 564 segments * 4599608 bytes = 2474.00 MB
+[2026-07-03 18:24:46] [INFO] [bot] [test_services.py:156]: [SUCCESS] Estimated Size for 1080p: 2474.00 MB
+[2026-07-03 18:24:46] [INFO] [bot] [test_services.py:31]: [TEST] Fetching HLS playlist for parallel partial download: https://vCVkQwY2zRcK.premilkyway.com/hls2/01/12438/5rzzsm2fl9b9_o/index-v1-a1.m3u8?t=f4-Rq6nnsvdmh5LmD2A5hCRK9w5iWMqfN_2tgafwkrk&s=1783092270&e=129600&f=62193562&srv=z6YT6wwf&i=0.4&sp=500&p1=z6YT6wwf&p2=z6YT6wwf&asn=55286
