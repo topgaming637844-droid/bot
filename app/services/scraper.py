@@ -439,6 +439,46 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
             logger.warning(f"Failed to resolve videa.hu: {e}")
         return None
 
+    # ok.ru embed: parse the embedded JSON metadata for direct video URLs or hlsManifestUrl
+    if "ok.ru" in embed_url:
+        try:
+            logger.info(f"Resolving ok.ru embed: {embed_url}")
+            headers = get_browser_headers(embed_url)
+            async with session.get(embed_url, headers=headers, ssl=False, timeout=10) as response:
+                if response.status == 200:
+                    text = await response.text()
+                    import html as html_lib
+                    text = html_lib.unescape(text)
+                    # Extract the nested metadata JSON containing video URLs
+                    metadata_match = re.search(r'data-options="([^"]+)"', text)
+                    if not metadata_match:
+                        metadata_match = re.search(r'"metadata"\s*:\s*"(\{.+?})"', text)
+                    if metadata_match:
+                        meta_str = metadata_match.group(1)
+                        meta_str = meta_str.replace('\\u0026', '&').replace('\\"', '"').replace('\\\\u0026', '&')
+                        try:
+                            meta = json.loads(meta_str)
+                        except Exception:
+                            meta = None
+                    else:
+                        meta = None
+                    # Try to find hlsManifestUrl directly in the full text
+                    hls_match = re.search(r'hlsManifestUrl[^"]*"\s*:\s*"([^"]+)"', text)
+                    if hls_match:
+                        hls_url = hls_match.group(1).replace('\\u0026', '&').replace('\\\\u0026', '&')
+                        logger.info(f"Resolved ok.ru HLS manifest: {hls_url}")
+                        return hls_url
+                    # Fallback: extract direct video URLs from "videos" array
+                    video_matches = re.findall(r'"url"\s*:\s*"(https?://vd[^"]+)"', text)
+                    if video_matches:
+                        # Take the last one (usually highest quality)
+                        best_url = video_matches[-1].replace('\\u0026', '&').replace('\\\\u0026', '&')
+                        logger.info(f"Resolved ok.ru direct video: {best_url}")
+                        return best_url
+        except Exception as e:
+            logger.warning(f"Failed to resolve ok.ru embed: {e}")
+        return None
+
     if "yonaplay.net" in embed_url:
         try:
             # yonaplay requires the exact play_url as referer
@@ -505,7 +545,7 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
             pass
             
     # Handle Streamwish/Hlswish mirrors (which change domains frequently)
-    wish_domains = ["streamwish", "hlswish", "stwish", "ninjastr", "awish", "wishembed", "wishfast", "closwish", "cybervynx", "swdyu", "flaswish", "sfastwish", "obeywish", "jodwish", "embedwish", "cdnwish", "strwish"]
+    wish_domains = ["streamwish", "hlswish", "stwish", "ninjastr", "awish", "wishembed", "wishfast", "closwish", "cybervynx", "swdyu", "flaswish", "sfastwish", "obeywish", "jodwish", "embedwish", "cdnwish", "strwish", "iplayerhls"]
     if any(d in embed_url for d in wish_domains):
         video_id = None
         for path_prefix in ["/e/", "/watch/", "/embed/"]:
@@ -569,8 +609,12 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
                         match = re.search(r'["\']([^"\']+\.m3u8[^"\']*)["\']', text)
                     if match:
                         m3u8_url = match.group(1)
-                        logger.info(f"Resolved master .m3u8 playlist: {m3u8_url}")
-                        return m3u8_url
+                        # Validate: must start with http and not be a JSON blob
+                        if m3u8_url.startswith('http') and len(m3u8_url) < 2000:
+                            logger.info(f"Resolved master .m3u8 playlist: {m3u8_url}")
+                            return m3u8_url
+                        else:
+                            logger.warning(f"Skipping invalid m3u8 match (len={len(m3u8_url)}): not a valid URL")
         except Exception:
             logger.exception(f"Error in process while resolving mirror embed URL {url}")
     return None
