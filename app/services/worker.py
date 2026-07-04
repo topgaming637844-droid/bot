@@ -314,10 +314,10 @@ async def execute_queued_task(
 
     nav_row = []
     if prev_ep:
-        nav_row.append(InlineKeyboardButton(text="⏪ السابقة", callback_data=f"nav_ep:{anilist_id}:{prev_ep}", style="bg_primary"))
-    nav_row.append(InlineKeyboardButton(text="📂 الحلقات", callback_data=f"nav_grid:{anilist_id}", style="bg_success"))
+        nav_row.append(InlineKeyboardButton(text="⏪ السابقة", callback_data=f"nav_ep:{anilist_id}:{prev_ep}"))
+    nav_row.append(InlineKeyboardButton(text="📂 الحلقات", callback_data=f"nav_grid:{anilist_id}"))
     if next_ep:
-        nav_row.append(InlineKeyboardButton(text="⏩ التالية", callback_data=f"nav_ep:{anilist_id}:{next_ep}", style="bg_primary"))
+        nav_row.append(InlineKeyboardButton(text="⏩ التالية", callback_data=f"nav_ep:{anilist_id}:{next_ep}"))
     nav_markup = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
     bot_info = await bot.get_me()

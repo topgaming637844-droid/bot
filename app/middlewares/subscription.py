@@ -69,8 +69,8 @@ class SubscriptionMiddleware(BaseMiddleware):
             f"يرجى الانضمام إلى القناة الرسمية أدناه، ثم اضغط على زر التحقق 👇"
         )
         markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 اشترك في القناة الرسمية", url=channel_link, style="bg_primary")],
-            [InlineKeyboardButton(text="🔄 تحقق من الاشتراك", callback_data="check_sub", style="bg_success")]
+            [InlineKeyboardButton(text="📢 اشترك في القناة الرسمية", url=channel_link)],
+            [InlineKeyboardButton(text="🔄 تحقق من الاشتراك", callback_data="check_sub")]
         ])
         
         if isinstance(event, Message):

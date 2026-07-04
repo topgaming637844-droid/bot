@@ -486,7 +486,8 @@ async def download_file(
         success = await download_multipart(url, target_path, status_message, total_size, quality, num_parts=num_parts)
         if success:
             return True
-        logger.warning("Multipart download failed or not supported. Falling back to single-connection download.")
+        logger.warning("Multipart download failed or blocked by host. Returning False to trigger automated mirror fallback.")
+        return False
 
     connector = get_session_connector(limit=0)
     referer = get_referer_for_url(url)

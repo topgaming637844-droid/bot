@@ -220,29 +220,22 @@ async def prompt_quality_selection(
         "480p": "🟢 480p",
         "360p": "🟡 360p"
     }
-    quality_styles = {
-        "1080p": "bg_danger",
-        "720p": "bg_primary",
-        "480p": "bg_success",
-        "360p": "bg_primary"
-    }
     
     keyboard_buttons = [
-        [InlineKeyboardButton(text="⚡ تلقائي (حجم ذكي <= 2 جيجا)", callback_data=f"dl:auto:{db_cache_id}", style="bg_success")]
+        [InlineKeyboardButton(text="⚡ تلقائي (حجم ذكي <= 2 جيجا)", callback_data=f"dl:auto:{db_cache_id}")]
     ]
     
     quality_row = []
     for q in ["1080p", "720p", "480p", "360p"]:
         if q in qualities:
             emoji_text = quality_emojis.get(q, q)
-            q_style = quality_styles.get(q, "bg_primary")
-            quality_row.append(InlineKeyboardButton(text=emoji_text, callback_data=f"dl:{q}:{db_cache_id}", style=q_style))
+            quality_row.append(InlineKeyboardButton(text=emoji_text, callback_data=f"dl:{q}:{db_cache_id}"))
     if quality_row:
         keyboard_buttons.append(quality_row)
         
     # Always add return to episodes list button
     keyboard_buttons.append([
-        InlineKeyboardButton(text="🔙 رجوع للحلقات 🎬", callback_data=f"nav_grid:{anilist_id}", style="bg_danger")
+        InlineKeyboardButton(text="🔙 رجوع للحلقات 🎬", callback_data=f"nav_grid:{anilist_id}")
     ])
         
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)

@@ -126,14 +126,13 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text=title[:40] + "..." if len(title) > 43 else title,
-                callback_data=f"sel_anime:{anime['anilist_id']}",
-                style="bg_primary"
+                callback_data=f"sel_anime:{anime['anilist_id']}"
             )
         ])
         
     if len(resolved_anime) > 5:
         keyboard_buttons.append([
-            InlineKeyboardButton(text="➕ إظهار المزيد من النتائج", callback_data=f"more_results:{query}", style="bg_primary")
+            InlineKeyboardButton(text="➕ إظهار المزيد من النتائج", callback_data=f"more_results:{query}")
         ])
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -334,13 +333,12 @@ async def render_episode_keyboard(
             end = min(start + 99, total_episodes)
             blocks.append(InlineKeyboardButton(
                 text=f"📂 {start} - {end}",
-                callback_data=f"ep_block:{anilist_id}:{start}:{end}",
-                style="bg_primary"
+                callback_data=f"ep_block:{anilist_id}:{start}:{end}"
             ))
         inline_keyboard = [blocks[i:i+2] for i in range(0, len(blocks), 2)]
         inline_keyboard.append([
-            InlineKeyboardButton(text="🔙 رجوع للبحث 🔍", callback_data=f"back_to_search:{anilist_id}", style="bg_danger"),
-            InlineKeyboardButton(text="⭐ إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}", style="bg_success")
+            InlineKeyboardButton(text="🔙 رجوع للبحث 🔍", callback_data=f"back_to_search:{anilist_id}"),
+            InlineKeyboardButton(text="⭐ إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}")
         ])
         markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
         
@@ -364,8 +362,7 @@ async def render_episode_keyboard(
         for ep in grid_eps:
             row.append(InlineKeyboardButton(
                 text=f"🔹 الحلقة {ep.ep_number}",
-                callback_data=f"sel_ep_click:{anilist_id}:{ep.ep_number}",
-                style="bg_primary"
+                callback_data=f"sel_ep_click:{anilist_id}:{ep.ep_number}"
             ))
             if len(row) == 3:
                 inline_keyboard.append(row)
@@ -375,10 +372,10 @@ async def render_episode_keyboard(
             
         bottom_row = []
         if total_episodes > 100:
-            bottom_row.append(InlineKeyboardButton(text="🔙 رجوع للمجموعات 📂", callback_data=f"ep_blocks_home:{anilist_id}", style="bg_danger"))
+            bottom_row.append(InlineKeyboardButton(text="🔙 رجوع للمجموعات 📂", callback_data=f"ep_blocks_home:{anilist_id}"))
         else:
-            bottom_row.append(InlineKeyboardButton(text="🔙 رجوع للبحث 🔍", callback_data=f"back_to_search:{anilist_id}", style="bg_danger"))
-        bottom_row.append(InlineKeyboardButton(text="⭐ إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}", style="bg_success"))
+            bottom_row.append(InlineKeyboardButton(text="🔙 رجوع للبحث 🔍", callback_data=f"back_to_search:{anilist_id}"))
+        bottom_row.append(InlineKeyboardButton(text="⭐ إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}"))
         inline_keyboard.append(bottom_row)
         markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
         
