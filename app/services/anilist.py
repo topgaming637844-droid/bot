@@ -25,6 +25,26 @@ async def translate_to_english(text: str) -> Optional[str]:
         logger.warning(f"Failed to translate query to English: {e}")
     return None
 
+async def translate_to_arabic(text: str) -> Optional[str]:
+    """Translates English text to Arabic using Google Translate free API."""
+    if not text or text.strip() == "" or text == "لا يوجد":
+        return None
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=ar&dt=t&q={quote(text)}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    parts = []
+                    for sentence in data[0]:
+                        if sentence and len(sentence) > 0 and sentence[0]:
+                            parts.append(sentence[0])
+                    translated = "".join(parts)
+                    return translated
+    except Exception as e:
+        logger.warning(f"Failed to translate description to Arabic: {e}")
+    return None
+
 # GraphQL query for searching anime directly
 MEDIA_QUERY = """
 query ($search: String) {
@@ -117,7 +137,7 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
                             data = await response.json()
                             media_list = data.get("data", {}).get("Page", {}).get("media", [])
                             for media in media_list:
-                                results.append(parse_media_node(media))
+                                results.append(await parse_media_node(media))
                         else:
                             logger.error(f"Error in process: AniList media query returned status {response.status}")
                 except Exception as e:
@@ -145,7 +165,7 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
                                     media_nodes = char.get("media", {}).get("nodes", [])
                                     for media in media_nodes:
                                         if media["id"] not in seen_ids:
-                                            results.append(parse_media_node(media))
+                                            results.append(await parse_media_node(media))
                                             seen_ids.add(media["id"])
                             else:
                                 logger.error(f"Error in process: AniList character query returned status {response.status}")
@@ -166,7 +186,7 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
             
     return []
 
-def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
+async def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts and normalizes media details from a GraphQL node."""
     title_data = media.get("title", {})
     title_english = title_data.get("english")
@@ -176,7 +196,15 @@ def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
     description = media.get("description", "")
     if description:
         import re
+        import html
         description = re.sub(r'<[^>]*>', '', description)
+        description = html.unescape(description)
+        
+        # Force translate English description to Arabic
+        if not any(ord(c) >= 0x0600 and ord(c) <= 0x06FF for c in description):
+            translated = await translate_to_arabic(description)
+            if translated:
+                description = translated
         
     cover_image = media.get("coverImage", {})
     image_url = cover_image.get("extraLarge") or cover_image.get("large")
