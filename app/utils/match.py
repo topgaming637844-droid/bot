@@ -35,47 +35,73 @@ def validate_title_match(original_title: str, matched_title: str) -> bool:
     return False
 
 def get_best_slug_match(scraper_results, search_title: str) -> str:
-    """Selects the best matching anime slug from scraper results, prioritizing TV series over movies/OVAs/specials."""
+    """Selects the best matching anime slug from scraper results, prioritizing exact matches and TV series over movies/OVAs/specials."""
     if not scraper_results:
         return ""
-        
-    # Filter scraper results using strict title validation to prevent the "Nonsense" wrong anime bug
+    
+    search_lower = search_title.lower().strip()
+    search_words = set(re.findall(r"\w+", search_lower))
+    
+    # ── STAGE 0: Exact slug match (highest priority) ──
+    # Convert query to slug format and check for direct hit
+    slug_query = re.sub(r"[^a-z0-9]+", "-", search_lower).strip("-")
+    for r in scraper_results:
+        if r["slug"].lower() == slug_query:
+            return r["slug"]
+    
+    # ── STAGE 1: Exact title match (case-insensitive) ──
+    for r in scraper_results:
+        if r["title"].lower().strip() == search_lower:
+            return r["slug"]
+    
+    # ── STAGE 2: Filter with strict title validation ──
     valid_results = []
     for r in scraper_results:
         if validate_title_match(search_title, r["title"]):
             valid_results.append(r)
-            
-    if not valid_results:
-        # Discard wrong anime structures and return empty string
-        return ""
-        
-    search_title_lower = search_title.lower()
     
-    # 1. Look for exact title match (case-insensitive)
-    for r in valid_results:
-        if r["title"].lower() == search_title_lower:
-            return r["slug"]
-            
-    # 2. Look for title that contains search title (or vice-versa) and isn't a movie/special/OVA
-    non_tv_keywords = ["movie", "فيلم", "ova", "أوفا", "special", "خاصة", "ونا", "ona", "more"]
-    # Sort scraper results by length of title to match shorter/purer titles first
+    if not valid_results:
+        return ""
+    
+    # ── STAGE 2.5: Short-query guard ──
+    # For short queries (1-2 words), reject results whose title is vastly longer
+    # This prevents "Monster" matching "monogatari-series-off-monster-season"
+    is_short_query = len(search_words) <= 2
+    if is_short_query:
+        strict_results = []
+        for r in valid_results:
+            title_lower = r["title"].lower().strip()
+            title_words = re.findall(r"\w+", title_lower)
+            # For short queries, the matched title should not be more than 3x longer in word count
+            if len(title_words) <= max(len(search_words) * 3, 4):
+                strict_results.append(r)
+            # Also accept if the slug is an exact or very close match
+            elif r["slug"].lower().replace("-", " ").strip() == search_lower:
+                strict_results.append(r)
+        if strict_results:
+            valid_results = strict_results
+    
+    # Sort valid results by title length (shorter = purer match)
     sorted_results = sorted(valid_results, key=lambda x: len(x["title"]))
     
+    non_tv_keywords = ["movie", "فيلم", "ova", "أوفا", "special", "خاصة", "ونا", "ona", "more"]
+    
+    # ── STAGE 3: Exact substring containment, prefer non-movie/OVA ──
     for r in sorted_results:
         title_lower = r["title"].lower()
         slug_lower = r["slug"].lower()
-        if search_title_lower in title_lower or title_lower in search_title_lower:
+        if search_lower in title_lower or title_lower in search_lower:
             if not any(kw in title_lower or kw in slug_lower for kw in non_tv_keywords):
                 return r["slug"]
-                
-    # 3. Fallback to any result matching search title
+    
+    # ── STAGE 4: Substring containment (any type) ──
     for r in sorted_results:
         title_lower = r["title"].lower()
-        if search_title_lower in title_lower or title_lower in search_title_lower:
+        if search_lower in title_lower or title_lower in search_lower:
             return r["slug"]
-            
-    # 4. Fallback to first valid result
-    return valid_results[0]["slug"]
+    
+    # ── STAGE 5: Fallback to best valid result (shortest title) ──
+    return sorted_results[0]["slug"]
 
 def sanitize_search_query(title: str) -> str:
     """Cleans the anime title by removing subtitles, special characters, and bullets."""
