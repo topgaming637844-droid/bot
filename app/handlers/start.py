@@ -192,7 +192,7 @@ async def handle_suggest_search(callback: CallbackQuery, db_session: AsyncSessio
         chat=callback.message.chat,
         from_user=callback.from_user,
         text=query
-    )
+    ).as_(callback.bot)
     await handle_anime_search(fake_msg, db_session, state)
 
 @router.callback_query(F.data == "menu_favorites")

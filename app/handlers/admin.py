@@ -98,7 +98,34 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
         await message.answer("❌ عذراً، لا تملك الصلاحية لتغيير الصورة المصغرة للفيديو.")
         return
         
-    photo = message.photo[-1]
+    await message.answer(
+        "⚠️ <b>بسبب قيود خادم تليجرام المحلي، يرجى إرسال رابط مباشر للصورة (مثل رابط Imgur) لتغيير الخلفية.</b>\n\n"
+        "الرجاء استخدام الأمر بالصيغة التالية:\n"
+        "<code>/setthumb رابط_الصورة_المباشر</code>\n\n"
+        "مثال:\n"
+        "<code>/setthumb https://i.imgur.com/xyz.jpg</code>",
+        parse_mode="HTML"
+    )
+
+@router.message(Command("setthumb"))
+async def handle_set_thumbnail_url(message: Message, db_session: AsyncSession):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        await message.answer("❌ عذراً، لا تملك الصلاحية لتغيير الصورة المصغرة للفيديو.")
+        return
+        
+    args = message.text.replace("/setthumb", "").strip()
+    if not args or not (args.startswith("http://") or args.startswith("https://")):
+        await message.answer(
+            "⚠️ <b>طريقة الاستخدام:</b>\n"
+            "<code>/setthumb رابط_الصورة_المباشر</code>\n\n"
+            "مثال:\n"
+            "<code>/setthumb https://i.imgur.com/xyz.jpg</code>",
+            parse_mode="HTML"
+        )
+        return
+        
+    status_msg = await message.answer("🔄 جاري تحميل وحفظ الصورة المصغرة من الرابط...")
     
     # Ensure app/data directory exists
     data_dir = Path(__file__).parent.parent / "data"
@@ -107,89 +134,26 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
     thumb_id_path = data_dir / "custom_thumb_id.txt"
     
     try:
-        bot = message.bot
-        file_info = await bot.get_file(photo.file_id)
-        file_path = file_info.file_path
-        
-        # Clean local Bot API server path to extract relative path for api.telegram.org
-        cleaned_path = file_path
-        prefix = f"bot{bot.token}/"
-        if prefix in cleaned_path:
-            cleaned_path = cleaned_path.split(prefix, 1)[1]
-        elif "/var/lib/telegram-bot-api/" in cleaned_path:
-            import re
-            match = re.search(r'bot[^/]+/(.+)$', cleaned_path)
-            if match:
-                cleaned_path = match.group(1)
-        if "/" in cleaned_path:
-            import re
-            match = re.search(r'bot[^/]+/(.+)$', cleaned_path)
-            if match:
-                cleaned_path = match.group(1)
-            else:
-                cleaned_path = cleaned_path.lstrip("/")
-                parts = cleaned_path.replace("\\", "/").split("/")
-                if len(parts) >= 2:
-                    cleaned_path = f"{parts[-2]}/{parts[-1]}"
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(args, ssl=False, timeout=30) as resp:
+                if resp.status == 200:
+                    image_bytes = await resp.read()
+                    with open(thumb_path, "wb") as f:
+                        f.write(image_bytes)
                     
-        # Try Method 1: Local filesystem direct access (in case of shared volume or same container)
-        success = False
-        if file_path and Path(file_path).exists():
-            try:
-                import shutil
-                shutil.copy(file_path, thumb_path)
-                logger.info("Custom thumbnail copied directly from local filesystem.")
-                success = True
-            except Exception as e:
-                logger.warning(f"Failed local filesystem copy: {e}")
-                
-        # Try Method 2: Local Bot API server HTTP download (if custom server configured)
-        if not success and config.TELEGRAM_API_SERVER:
-            try:
-                base_url = config.TELEGRAM_API_SERVER.rstrip("/")
-                local_url = f"{base_url}/file/bot{bot.token}/{cleaned_path}"
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(local_url, ssl=False, timeout=15) as resp:
-                        if resp.status == 200:
-                            image_bytes = await resp.read()
-                            with open(thumb_path, "wb") as f:
-                                f.write(image_bytes)
-                            logger.info("Custom thumbnail downloaded from local Bot API HTTP server.")
-                            success = True
-                        else:
-                            logger.warning(f"Local Bot API server returned {resp.status} for file download")
-            except Exception as e:
-                logger.warning(f"Failed local Bot API HTTP download: {e}")
-                
-        # Try Method 3: Official Telegram Cloud HTTP download
-        if not success:
-            cloud_url = f"https://api.telegram.org/file/bot{bot.token}/{cleaned_path}"
-            import aiohttp
-            async with aiohttp.ClientSession() as session:
-                async with session.get(cloud_url, ssl=False, timeout=20) as resp:
-                    if resp.status == 200:
-                        image_bytes = await resp.read()
-                        with open(thumb_path, "wb") as f:
-                            f.write(image_bytes)
-                        logger.info("Custom thumbnail downloaded from official Telegram Cloud.")
-                        success = True
-                    else:
-                        raise Exception(f"Official Telegram API returned status {resp.status} for file download")
+                    # Clean up custom_thumb_id.txt if it exists to avoid conflicts
+                    if thumb_id_path.exists():
+                        thumb_id_path.unlink()
                         
-        if not success:
-            raise Exception("Could not retrieve file using any of the available fallback methods.")
-        
-        # Clean up custom_thumb_id.txt if it exists to avoid conflicts
-        if thumb_id_path.exists():
-            thumb_id_path.unlink()
-            
-        logger.info(f"Custom video thumbnail updated by Admin (User ID: {message.from_user.id}) and saved locally.")
-        await message.answer("✅ تم تحميل وتحديث الصورة المصغرة الافتراضية للفيديوهات بنجاح.")
+                    logger.info(f"Custom video thumbnail updated by Admin (User ID: {message.from_user.id}) via URL: {args}")
+                    await status_msg.edit_text("✅ تم تحميل وتحديث الصورة المصغرة الافتراضية للفيديوهات بنجاح.")
+                else:
+                    await status_msg.edit_text(f"❌ فشل تحميل الصورة، رمز استجابة السيرفر: {resp.status}")
     except Exception as e:
-        logger.exception("Error downloading custom thumbnail")
+        logger.exception("Error downloading custom thumbnail from URL")
         import html
-        await message.answer(f"❌ فشل تحديث الصورة المصغرة: {html.escape(str(e))}")
+        await status_msg.edit_text(f"❌ فشل تحميل الصورة: {html.escape(str(e))}")
 
 @router.message(Command("post_episode"))
 async def cmd_post_episode(message: Message, db_session: AsyncSession):
