@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import config
+from aiogram.exceptions import TelegramBadRequest
 
 router = Router(name="start")
 
@@ -24,18 +25,18 @@ async def send_welcome_panel(message: Message, db_session: AsyncSession):
     
     keyboard = [
         [
-            InlineKeyboardButton(text="بحث", callback_data="menu_search"),
-            InlineKeyboardButton(text="إقترح لي", callback_data="menu_suggest")
+            InlineKeyboardButton(text="🔍 بحث", callback_data="menu_search"),
+            InlineKeyboardButton(text="🎲 إقترح لي", callback_data="menu_suggest")
         ],
         [
-            InlineKeyboardButton(text="قائمة المفضلة", callback_data="menu_favorites")
+            InlineKeyboardButton(text="⭐ قائمة المفضلة", callback_data="menu_favorites")
         ],
         [
-            InlineKeyboardButton(text="الدعم الفني", callback_data="menu_support"),
-            InlineKeyboardButton(text="مساعدة", callback_data="menu_help")
+            InlineKeyboardButton(text="🛠️ الدعم الفني", callback_data="menu_support"),
+            InlineKeyboardButton(text="❓ مساعدة", callback_data="menu_help")
         ],
         [
-            InlineKeyboardButton(text="للإعلانات والتمويل", callback_data="menu_ads")
+            InlineKeyboardButton(text="📢 للإعلانات والتمويل", callback_data="menu_ads")
         ]
     ]
     
@@ -46,7 +47,7 @@ async def send_welcome_panel(message: Message, db_session: AsyncSession):
     )
     
     if is_user_admin:
-        keyboard.append([InlineKeyboardButton(text="لوحة تحكم الإدارة (Admin)", callback_data="admin_home")])
+        keyboard.append([InlineKeyboardButton(text="🛠️ لوحة تحكم الإدارة (Admin)", callback_data="admin_home")])
         welcome_text += (
             "🛠️ <b>قسم الإدارة والمسؤولين:</b>\n"
             "مرحباً بك كمسؤول في البوت. إليك الأوامر المتاحة لك:\n"
@@ -109,7 +110,7 @@ async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContex
                     webapp_url = f"{config.WEBAPP_BASE_URL}/webapp/qualities?db_cache_id={dl_cache.id}&anilist_id={anilist_id}&ep_number={ep_number}"
                     
                     keyboard_buttons = [
-                        [InlineKeyboardButton(text="اختر الجودة", web_app=WebAppInfo(url=webapp_url))]
+                        [InlineKeyboardButton(text="⚙️ اختر الجودة", web_app=WebAppInfo(url=webapp_url))]
                     ]
                     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
                     
@@ -205,22 +206,35 @@ async def handle_check_subscription(callback: CallbackQuery, db_session: AsyncSe
 @router.callback_query(F.data == "menu_search")
 async def handle_menu_search(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer("🔍 **أرسل اسم الأنمي الذي تريد البحث عنه الآن (بالعربية أو الإنجليزية):**")
+    try:
+        await callback.message.edit_text("🔍 **أرسل اسم الأنمي الذي تريد البحث عنه الآن (بالعربية أو الإنجليزية):**", parse_mode="Markdown")
+    except TelegramBadRequest:
+        await callback.message.answer("🔍 **أرسل اسم الأنمي الذي تريد البحث عنه الآن (بالعربية أو الإنجليزية):**", parse_mode="Markdown")
 
 @router.callback_query(F.data == "menu_suggest")
 async def handle_menu_suggest(callback: CallbackQuery):
     await callback.answer()
     suggested = random.choice(SUGGESTIONS)
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"ابحث عن {suggested}", callback_data=f"suggest_search:{suggested}")]
+        [InlineKeyboardButton(text=f"🔍 ابحث عن {suggested}", callback_data=f"suggest_search:{suggested}")],
+        [InlineKeyboardButton(text="🏠 العودة للرئيسية", callback_data="check_sub")]
     ])
-    await callback.message.answer(
-        f"🎲 <b>اقتراح اليوم لك:</b>\n\n"
-        f"📺 أنمي: <b>{suggested}</b>\n\n"
-        f"اضغط على الزر بالأسفل للبحث عنه تلقائياً 👇",
-        reply_markup=markup,
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"🎲 <b>اقتراح اليوم لك:</b>\n\n"
+            f"📺 أنمي: <b>{suggested}</b>\n\n"
+            f"اضغط على الزر بالأسفل للبحث عنه تلقائياً 👇",
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
+    except TelegramBadRequest:
+        await callback.message.answer(
+            f"🎲 <b>اقتراح اليوم لك:</b>\n\n"
+            f"📺 أنمي: <b>{suggested}</b>\n\n"
+            f"اضغط على الزر بالأسفل للبحث عنه تلقائياً 👇",
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
 
 @router.callback_query(F.data.startswith("suggest_search:"))
 async def handle_suggest_search(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
@@ -255,7 +269,7 @@ async def handle_menu_favorites(callback: CallbackQuery, db_session: AsyncSessio
         for f in favs:
             keyboard.append([InlineKeyboardButton(text=f.anime_title, callback_data=f"suggest_search:{f.anime_title}")])
             
-    keyboard.append([InlineKeyboardButton(text="العودة للرئيسية", callback_data="check_sub")])
+    keyboard.append([InlineKeyboardButton(text="🏠 العودة للرئيسية", callback_data="check_sub")])
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     
     try:
@@ -272,7 +286,7 @@ async def handle_menu_support(callback: CallbackQuery):
         "👉 @botanmie_support\n\n"
         "نشكرك على استخدام خدماتنا! ❤️"
     )
-    keyboard = [[InlineKeyboardButton(text="العودة للرئيسية", callback_data="check_sub")]]
+    keyboard = [[InlineKeyboardButton(text="🏠 العودة للرئيسية", callback_data="check_sub")]]
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     try:
         await callback.message.edit_text(support_text, reply_markup=markup, parse_mode="HTML")
@@ -297,7 +311,7 @@ async def handle_menu_help(callback: CallbackQuery):
         "• <b>أزرار التنقل السريعة</b>: عند استلام الفيديو، ستجد أزرار تنقل تحت الفيديو مباشرة (`◀️ الحلقة السابقة` | `🔢 حلقة أخرى` | `▶️ الحلقة التالية`) لتشغيل الحلقة التالية بلمسة واحدة دون البحث مجدداً.\n"
         "• <b>سرعة ودعم فائق</b>: يدعم البوت تنزيل الحلقات والأفلام ذات الأحجام الضخمة حتى 2 جيجابايت لتلبي كافة الاحتياجات."
     )
-    keyboard = [[InlineKeyboardButton(text="العودة للرئيسية", callback_data="check_sub")]]
+    keyboard = [[InlineKeyboardButton(text="🏠 العودة للرئيسية", callback_data="check_sub")]]
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     try:
         await callback.message.edit_text(help_text, reply_markup=markup, parse_mode="HTML")
@@ -313,7 +327,7 @@ async def handle_menu_ads(callback: CallbackQuery):
         "👉 @botanmie_admin\n\n"
         "رأيكم ودعمكم يهمنا! 🌟"
     )
-    keyboard = [[InlineKeyboardButton(text="العودة للرئيسية", callback_data="check_sub")]]
+    keyboard = [[InlineKeyboardButton(text="🏠 العودة للرئيسية", callback_data="check_sub")]]
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     try:
         await callback.message.edit_text(ads_text, reply_markup=markup, parse_mode="HTML")

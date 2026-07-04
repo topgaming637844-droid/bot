@@ -22,10 +22,26 @@ class Config:
     WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip() or None
     LIBRARY_GROUP_ID = int(os.getenv("LIBRARY_GROUP_ID", "-1003757034229").strip())
     
-    # Telegram Mini App Base URL
-    WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip() or (
-        f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}" if os.getenv("RAILWAY_PUBLIC_DOMAIN") else "http://localhost:8080"
-    )
+    # Telegram Mini App Base URL (strictly enforce HTTPS for Telegram compatibility)
+    webapp_env = os.getenv("WEBAPP_BASE_URL", "").strip()
+    if webapp_env:
+        if webapp_env.startswith("http://"):
+            WEBAPP_BASE_URL = webapp_env.replace("http://", "https://")
+        elif not webapp_env.startswith("https://"):
+            WEBAPP_BASE_URL = f"https://{webapp_env}"
+        else:
+            WEBAPP_BASE_URL = webapp_env
+    else:
+        domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        if domain:
+            if domain.startswith("http://"):
+                WEBAPP_BASE_URL = domain.replace("http://", "https://")
+            elif domain.startswith("https://"):
+                WEBAPP_BASE_URL = domain
+            else:
+                WEBAPP_BASE_URL = f"https://{domain}"
+        else:
+            WEBAPP_BASE_URL = "https://botanmie.up.railway.app"
 
     # Static list of 10 modern organic browser User-Agents for dynamic header rotation
     USER_AGENTS = [

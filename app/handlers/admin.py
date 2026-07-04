@@ -491,7 +491,7 @@ async def handle_admin_stats(callback: CallbackQuery, db_session: AsyncSession):
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="« رجوع للوحة التحكم", callback_data="admin_home")]
+        [InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")]
     ])
     
     await callback.message.edit_text(stats_text, reply_markup=keyboard, parse_mode="HTML")
@@ -597,7 +597,7 @@ async def handle_admin_toggle_sub(callback: CallbackQuery, db_session: AsyncSess
             InlineKeyboardButton(text="✏️ تغيير القناة", callback_data="admin_change_channel"),
             InlineKeyboardButton(text="❌ تعطيل الاشتراك الإجباري", callback_data="admin_disable_sub")
         ],
-        [InlineKeyboardButton(text="« رجوع للوحة التحكم", callback_data="admin_home")]
+        [InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")]
     ])
     
     await callback.message.edit_text(

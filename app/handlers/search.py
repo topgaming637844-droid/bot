@@ -4,6 +4,7 @@ from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,7 +133,7 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
         
     if len(resolved_anime) > 5:
         keyboard_buttons.append([
-            InlineKeyboardButton(text="إظهار المزيد من النتائج", callback_data=f"more_results:{query}")
+            InlineKeyboardButton(text="📄 إظهار المزيد من النتائج", callback_data=f"more_results:{query}")
         ])
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -166,6 +167,11 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
         title = cache_entry.title_english
 
     status_msg = await callback.message.answer("🔍 جاري جلب قائمة الحلقات...")
+    # Delete the search results message to keep chat clean
+    try:
+        await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
+    except Exception:
+        pass
     
     anime_slug = None
     if cache_entry.title_romaji.startswith("WITANIME:"):
@@ -324,10 +330,10 @@ async def render_episode_keyboard(
     webapp_url = f"{config.WEBAPP_BASE_URL}/webapp/episodes?anilist_id={anilist_id}"
     
     inline_keyboard = [
-        [InlineKeyboardButton(text="اختر الحلقة", web_app=WebAppInfo(url=webapp_url))],
+        [InlineKeyboardButton(text="📺 اختر الحلقة", web_app=WebAppInfo(url=webapp_url))],
         [
-            InlineKeyboardButton(text="رجوع للبحث", callback_data=f"back_to_search:{anilist_id}"),
-            InlineKeyboardButton(text="إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}")
+            InlineKeyboardButton(text="🔙 رجوع للبحث", callback_data=f"back_to_search:{anilist_id}"),
+            InlineKeyboardButton(text="⭐ إضافة للمفضلة", callback_data=f"fav_add:{anilist_id}")
         ]
     ]
     markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -340,7 +346,8 @@ async def render_episode_keyboard(
         
     if message_id:
         try:
-            if cache_entry.image_url:
+            # Try editing as caption first (for photo messages)
+            try:
                 await bot.edit_message_caption(
                     chat_id=chat_id,
                     message_id=message_id,
@@ -348,20 +355,23 @@ async def render_episode_keyboard(
                     reply_markup=markup,
                     parse_mode="Markdown"
                 )
-            else:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=text,
-                    reply_markup=markup,
-                    parse_mode="Markdown"
-                )
+            except TelegramBadRequest as e:
+                if "there is no caption in the message" in str(e).lower() or "message is not modified" in str(e).lower():
+                    # Fallback: edit as text message
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=markup,
+                        parse_mode="Markdown"
+                    )
+                else:
+                    raise
+        except TelegramBadRequest:
+            # Final fallback: send a new message
+            await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode="Markdown")
         except Exception:
-            # Fallback to sending new if edit fails
-            if cache_entry.image_url:
-                await bot.send_photo(chat_id=chat_id, photo=cache_entry.image_url, caption=text, reply_markup=markup, parse_mode="Markdown")
-            else:
-                await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode="Markdown")
     else:
         if cache_entry.image_url:
             await bot.send_photo(chat_id=chat_id, photo=cache_entry.image_url, caption=text, reply_markup=markup, parse_mode="Markdown")
@@ -418,7 +428,10 @@ async def handle_sel_ep_click(callback: CallbackQuery, db_session: AsyncSession)
     res = await db_session.execute(stmt)
     ep_entry = res.scalar_one_or_none()
     if not ep_entry:
-        await callback.message.answer("❌ انتهت صلاحية الجلسة. يرجى اختيار الحلقة مجدداً.")
+        try:
+            await callback.message.edit_text("❌ انتهت صلاحية الجلسة. يرجى اختيار الحلقة مجدداً.")
+        except TelegramBadRequest:
+            await callback.message.answer("❌ انتهت صلاحية الجلسة. يرجى اختيار الحلقة مجدداً.")
         return
         
     stmt_s = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
@@ -507,7 +520,10 @@ async def handle_more_results(callback: CallbackQuery, db_session: AsyncSession)
     cached_entries = res.scalars().all()
     
     if not cached_entries:
-        await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        try:
+            await callback.message.edit_text("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        except TelegramBadRequest:
+            await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
         return
         
     keyboard_buttons = []
@@ -524,13 +540,20 @@ async def handle_more_results(callback: CallbackQuery, db_session: AsyncSession)
         
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     try:
-        await callback.bot.edit_message_reply_markup(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            reply_markup=markup
+        await callback.message.edit_text(
+            "✨ **نتائج البحث**:\nاختر الأنمي لعرض خيارات الحلقات والتحميل:",
+            reply_markup=markup,
+            parse_mode="Markdown"
         )
-    except Exception:
-        pass
+    except TelegramBadRequest:
+        try:
+            await callback.bot.edit_message_reply_markup(
+                chat_id=callback.message.chat.id,
+                message_id=callback.message.message_id,
+                reply_markup=markup
+            )
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data.startswith("back_to_search:"))
@@ -543,7 +566,10 @@ async def handle_back_to_search(callback: CallbackQuery, db_session: AsyncSessio
     res = await db_session.execute(stmt)
     cache_entry = res.scalars().first()
     if not cache_entry:
-        await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        try:
+            await callback.message.edit_text("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        except TelegramBadRequest:
+            await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
         return
         
     query = cache_entry.query_text
@@ -554,7 +580,10 @@ async def handle_back_to_search(callback: CallbackQuery, db_session: AsyncSessio
     cached_entries = res_all.scalars().all()
     
     if not cached_entries:
-        await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        try:
+            await callback.message.edit_text("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
+        except TelegramBadRequest:
+            await callback.message.answer("❌ انتهت صلاحية البحث. يرجى كتابة اسم الأنمي مجدداً للبحث.")
         return
         
     # 3. Build search results keyboard
@@ -572,14 +601,14 @@ async def handle_back_to_search(callback: CallbackQuery, db_session: AsyncSessio
         
     if len(cached_entries) > 5:
         keyboard_buttons.append([
-            InlineKeyboardButton(text="إظهار المزيد من النتائج", callback_data=f"more_results:{query}")
+            InlineKeyboardButton(text="📄 إظهار المزيد من النتائج", callback_data=f"more_results:{query}")
         ])
         
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    # If the message had a photo caption, edit it back or edit text
+    # Edit in-place with cascading fallback
     try:
-        if callback.message.caption:
+        try:
             await callback.bot.edit_message_caption(
                 chat_id=callback.message.chat.id,
                 message_id=callback.message.message_id,
@@ -587,16 +616,19 @@ async def handle_back_to_search(callback: CallbackQuery, db_session: AsyncSessio
                 reply_markup=markup,
                 parse_mode="Markdown"
             )
-        else:
-            await callback.bot.edit_message_text(
-                chat_id=callback.message.chat.id,
-                message_id=callback.message.message_id,
-                text="✨ **نتائج البحث**:\nاختر الأنمي لعرض خيارات الحلقات والتحميل:",
-                reply_markup=markup,
-                parse_mode="Markdown"
-            )
+        except TelegramBadRequest as e:
+            if "there is no caption in the message" in str(e).lower() or "message is not modified" in str(e).lower():
+                await callback.bot.edit_message_text(
+                    chat_id=callback.message.chat.id,
+                    message_id=callback.message.message_id,
+                    text="✨ **نتائج البحث**:\nاختر الأنمي لعرض خيارات الحلقات والتحميل:",
+                    reply_markup=markup,
+                    parse_mode="Markdown"
+                )
+            else:
+                raise
     except Exception:
-        # Fallback to sending new
+        # Final fallback: send a new message
         await callback.message.answer(
             "✨ **نتائج البحث**:\nاختر الأنمي لعرض خيارات الحلقات والتحميل:",
             reply_markup=markup,

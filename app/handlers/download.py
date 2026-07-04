@@ -4,6 +4,7 @@ from typing import Optional
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,7 +172,8 @@ async def prompt_quality_selection(
     play_url: str,
     anime_title: str,
     duration: Optional[str],
-    db_session: AsyncSession
+    db_session: AsyncSession,
+    message_id: Optional[int] = None
 ):
     # Check download cache
     dl_stmt = select(DownloadCache).where(DownloadCache.play_url == play_url)
@@ -219,17 +221,38 @@ async def prompt_quality_selection(
     webapp_url = f"{config.WEBAPP_BASE_URL}/webapp/qualities?db_cache_id={db_cache_id}&anilist_id={anilist_id}&ep_number={ep_number}"
     
     keyboard_buttons = [
-        [InlineKeyboardButton(text="اختر الجودة", web_app=WebAppInfo(url=webapp_url))],
-        [InlineKeyboardButton(text="رجوع للحلقات", callback_data=f"nav_grid:{anilist_id}")]
+        [InlineKeyboardButton(text="⚙️ اختر الجودة", web_app=WebAppInfo(url=webapp_url))],
+        [InlineKeyboardButton(text="🔙 رجوع للحلقات", callback_data=f"nav_grid:{anilist_id}")]
     ]
         
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     
-    await bot.send_message(
-        chat_id,
+    quality_text = (
         f"**الأنمي**: {anime_title}\n"
         f"**الحلقة**: {ep_number}\n\n"
-        f"اختر جودة التحميل المفضلة أدناه:",
+        f"اختر جودة التحميل المفضلة أدناه:"
+    )
+    
+    # Try in-place editing first to avoid chat clutter
+    if message_id:
+        try:
+            try:
+                await bot.edit_message_text(
+                    quality_text,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    reply_markup=markup,
+                    parse_mode="Markdown"
+                )
+                return
+            except TelegramBadRequest:
+                pass
+        except Exception:
+            pass
+    
+    await bot.send_message(
+        chat_id,
+        quality_text,
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -345,7 +368,10 @@ async def handle_nav_ep(callback: CallbackQuery, db_session: AsyncSession):
     res = await db_session.execute(stmt)
     ep_entry = res.scalar_one_or_none()
     if not ep_entry:
-        await callback.message.answer("❌ عذراً، لم يتم العثور على الحلقة المطلوبة في الكاش.")
+        try:
+            await callback.message.edit_text("❌ عذراً، لم يتم العثور على الحلقة المطلوبة في الكاش.")
+        except TelegramBadRequest:
+            await callback.message.answer("❌ عذراً، لم يتم العثور على الحلقة المطلوبة في الكاش.")
         return
         
     stmt_s = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
@@ -365,7 +391,8 @@ async def handle_nav_ep(callback: CallbackQuery, db_session: AsyncSession):
         play_url=ep_entry.play_url,
         anime_title=title,
         duration=duration,
-        db_session=db_session
+        db_session=db_session,
+        message_id=callback.message.message_id
     )
 
 
@@ -380,7 +407,7 @@ async def handle_nav_grid(callback: CallbackQuery, db_session: AsyncSession):
     await render_episode_keyboard(
         bot=callback.bot,
         chat_id=callback.message.chat.id,
-        message_id=None,
+        message_id=callback.message.message_id,
         anilist_id=anilist_id,
         db_session=db_session
     )
