@@ -98,14 +98,56 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
         await message.answer("❌ عذراً، لا تملك الصلاحية لتغيير الصورة المصغرة للفيديو.")
         return
         
-    await message.answer(
-        "⚠️ <b>بسبب قيود خادم تليجرام المحلي، يرجى إرسال رابط مباشر للصورة (مثل رابط Imgur) لتغيير الخلفية.</b>\n\n"
-        "الرجاء استخدام الأمر بالصيغة التالية:\n"
-        "<code>/setthumb رابط_الصورة_المباشر</code>\n\n"
-        "مثال:\n"
-        "<code>/setthumb https://i.imgur.com/xyz.jpg</code>",
-        parse_mode="HTML"
-    )
+    status_msg = await message.answer("🔄 جاري تنزيل الصورة من خادم تلغرام السحابي وتحديث الخلفية...")
+    
+    # Ensure app/data directory exists
+    data_dir = Path(__file__).parent.parent / "data"
+    data_dir.mkdir(exist_ok=True)
+    thumb_path = data_dir / "custom_thumb.jpg"
+    thumb_id_path = data_dir / "custom_thumb_id.txt"
+    
+    try:
+        photo = message.photo[-1]
+        file_id = photo.file_id
+        bot_token = message.bot.token
+        
+        import aiohttp
+        # 1. Fetch file info from official cloud Telegram API
+        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(get_file_url, ssl=False, timeout=15) as resp:
+                if resp.status != 200:
+                    await status_msg.edit_text(f"❌ فشل جلب معلومات الملف من تلغرام السحابي. كود الحالة: {resp.status}")
+                    return
+                file_info = await resp.json()
+                
+        if not file_info.get("ok"):
+            await status_msg.edit_text("❌ رد غير صالح من خادم تلغرام السحابي.")
+            return
+            
+        file_path = file_info["result"]["file_path"]
+        
+        # 2. Download the image bytes from official cloud file server
+        download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(download_url, ssl=False, timeout=30) as resp:
+                if resp.status == 200:
+                    image_bytes = await resp.read()
+                    with open(thumb_path, "wb") as f:
+                        f.write(image_bytes)
+                        
+                    # Clean up custom_thumb_id.txt if it exists to avoid conflicts
+                    if thumb_id_path.exists():
+                        thumb_id_path.unlink()
+                        
+                    logger.info(f"Custom video thumbnail updated by Admin (User ID: {message.from_user.id}) via sent Photo message.")
+                    await status_msg.edit_text("✅ تم تحديث الخلفية الافتراضية للفيديوهات بنجاح من الصورة المرسلة!")
+                else:
+                    await status_msg.edit_text(f"❌ فشل تنزيل ملف الصورة من خادم تلغرام. كود الحالة: {resp.status}")
+    except Exception as e:
+        logger.exception("Error downloading custom thumbnail from Telegram cloud API")
+        import html
+        await status_msg.edit_text(f"❌ فشل تحديث الصورة المصغرة: {html.escape(str(e))}")
 
 @router.message(Command("setthumb"))
 async def handle_set_thumbnail_url(message: Message, db_session: AsyncSession):
