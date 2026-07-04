@@ -363,23 +363,35 @@ async def download_multipart(
     downloaded_bytes = [0] * num_parts
     start_time = time.time()
     last_update = 0
+    abort_flag = [False]
     
     async def download_part(part_idx: int, start_byte: int, end_byte: int, part_path: Path, session: aiohttp.ClientSession):
         # Staggered connection starts to prevent triggering firewalls/DDoS rate limits (very fast start)
         await asyncio.sleep(0.01 * part_idx)
         
+        if abort_flag[0]:
+            return False
+            
         part_headers = headers.copy()
         part_headers["Range"] = f"bytes={start_byte}-{end_byte}"
         
         for attempt in range(3):
+            if abort_flag[0]:
+                return False
             try:
                 client_timeout = aiohttp.ClientTimeout(total=None, sock_read=60)
                 async with session.get(url, headers=part_headers, ssl=False, timeout=client_timeout) as response:
+                    if response.status == 403:
+                        logger.warning(f"Direct MP4 host returned 403 Forbidden on part {part_idx}. Range requests are likely blocked by CDN. Aborting multipart download.")
+                        abort_flag[0] = True
+                        raise Exception("403 Forbidden")
                     if response.status not in (200, 206):
                         raise Exception(f"Part returned status {response.status}")
                         
                     with open(part_path, "wb") as f:
                         async for chunk in response.content.iter_chunked(1024 * 1024): # 1 MB chunk
+                            if abort_flag[0]:
+                                raise Exception("Aborted")
                             f.write(chunk)
                             downloaded_bytes[part_idx] += len(chunk)
                             
@@ -409,6 +421,8 @@ async def download_multipart(
                                     pass
                     return True
             except Exception as e:
+                if "403 Forbidden" in str(e) or abort_flag[0]:
+                    break
                 if attempt == 2:
                     logger.exception(f"Error downloading part {part_idx} after all attempts failed")
                 else:
@@ -424,8 +438,8 @@ async def download_multipart(
             ]
             results = await asyncio.gather(*tasks)
             
-        if not all(results):
-            logger.error("One or more parts failed to download.")
+        if abort_flag[0] or not all(results):
+            logger.error("One or more parts failed to download or aborted due to 403.")
             # Clean up parts
             for p in part_files:
                 if p.exists():

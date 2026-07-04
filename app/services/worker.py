@@ -314,10 +314,10 @@ async def execute_queued_task(
 
     nav_row = []
     if prev_ep:
-        nav_row.append(InlineKeyboardButton(text="⏪ السابقة", callback_data=f"nav_ep:{anilist_id}:{prev_ep}"))
-    nav_row.append(InlineKeyboardButton(text="📂 الحلقات", callback_data=f"nav_grid:{anilist_id}"))
+        nav_row.append(InlineKeyboardButton(text="⏪ السابقة", callback_data=f"nav_ep:{anilist_id}:{prev_ep}", style="bg_primary"))
+    nav_row.append(InlineKeyboardButton(text="📂 الحلقات", callback_data=f"nav_grid:{anilist_id}", style="bg_success"))
     if next_ep:
-        nav_row.append(InlineKeyboardButton(text="⏩ التالية", callback_data=f"nav_ep:{anilist_id}:{next_ep}"))
+        nav_row.append(InlineKeyboardButton(text="⏩ التالية", callback_data=f"nav_ep:{anilist_id}:{next_ep}", style="bg_primary"))
     nav_markup = InlineKeyboardMarkup(inline_keyboard=[nav_row])
 
     bot_info = await bot.get_me()
@@ -383,8 +383,36 @@ async def execute_queued_task(
         
         success = await download_file(download_url, temp_file_path, proxy_msg, size, selected_quality)
         if not success:
+            logger.warning(f"Primary download failed for {download_url}. Trying other qualities/mirrors as fallback...")
+            fallback_urls = [url for q, url in qualities.items() if url != download_url]
+            # Prioritize HLS/m3u8 mirrors
+            fallback_urls.sort(key=lambda u: 0 if (".m3u8" in u or "wish" in u or "swdyu" in u) else 1)
+            
+            for fb_url in fallback_urls:
+                logger.info(f"Trying fallback download mirror: {fb_url}")
+                if temp_file_path.exists():
+                    try: os.remove(temp_file_path)
+                    except Exception: pass
+                    
+                if status_msg_id:
+                    try:
+                        await bot.edit_message_text("🔄 جاري محاولة التحميل من خادم بديل...", chat_id=chat_id, message_id=status_msg_id)
+                    except Exception: pass
+                
+                from app.services.downloader import get_url_file_size
+                async with aiohttp.ClientSession() as size_session:
+                    fb_size = await get_url_file_size(fb_url, size_session)
+                if fb_size <= 0:
+                    fb_size = size
+                    
+                success = await download_file(fb_url, temp_file_path, proxy_msg, fb_size, selected_quality)
+                if success:
+                    logger.info(f"Fallback download succeeded using mirror: {fb_url}")
+                    break
+                    
+        if not success:
             if status_msg_id:
-                try: await bot.edit_message_text("❌ فشل تحميل الملف من خادم البث.", chat_id=chat_id, message_id=status_msg_id)
+                try: await bot.edit_message_text("❌ فشل تحميل الملف من كافة خوادم البث المتاحة.", chat_id=chat_id, message_id=status_msg_id)
                 except Exception: pass
             return False
 
