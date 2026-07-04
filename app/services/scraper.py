@@ -445,16 +445,22 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
 
     headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
     
-    # Try multiple known mirror player domains if it's hglink.to or Streamwish
+    # Try multiple known mirror player domains if it's hglink.to / hgcloud.to or Streamwish
     target_urls = [embed_url]
-    if "hglink.to" in embed_url:
+    if "hglink.to" in embed_url or "hgcloud.to" in embed_url or "hanerix.com" in embed_url or "masukestin.com" in embed_url:
         try:
-            video_id = embed_url.split("/e/")[1].strip("/")
-            target_urls = [
-                f"https://hanerix.com/e/{video_id}",
-                f"https://masukestin.com/e/{video_id}",
-                f"https://hglink.to/e/{video_id}"
-            ]
+            video_id = None
+            for prefix in ["/e/", "/watch/", "/embed/"]:
+                if prefix in embed_url:
+                    video_id = embed_url.split(prefix)[1].split("?")[0].strip("/")
+                    break
+            if video_id:
+                target_urls = [
+                    f"https://hanerix.com/e/{video_id}",
+                    f"https://masukestin.com/e/{video_id}",
+                    f"https://hglink.to/e/{video_id}",
+                    f"https://hgcloud.to/e/{video_id}"
+                ]
         except Exception:
             pass
             
@@ -489,6 +495,8 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
                 if response.status != 200:
                     continue
                 text = await response.text()
+                # Unescape slashes for JSON-serialized URLs (e.g. \/ to /)
+                text = text.replace("\\/", "/")
                 
                 # Check for direct mp4 match first
                 mp4_match = re.search(r'src\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', text)
