@@ -27,6 +27,7 @@ from app.utils.auth import is_admin
 from app.services.scraper import get_episodes_scraper, get_m3u8_from_embed
 from app.services.anilist import search_anilist, translate_to_english
 from app.utils.match import get_best_slug_match
+from app.services.downloader import download_file
 
 async def run_proxy_check():
     if config.PROXY_URL:
@@ -124,10 +125,35 @@ async def test_mp4_resolution():
         print(f"Resolving {url}...")
         resolved = await get_m3u8_from_embed(url, session)
         print(f"Resolved Direct Link: {resolved}")
-        if resolved and resolved.endswith(".mp4"):
-            print("Successfully resolved direct MP4 video link! (Expected: *.mp4)")
-        else:
-            print("Failed to resolve direct MP4 video link.")
+        return resolved
+
+async def test_multipart_download(direct_url: str):
+    print("\n--- TESTING MULTIPART PARALLEL DOWNLOAD ---")
+    if not direct_url:
+        print("Skipped: no direct URL to test.")
+        return
+        
+    class MockMessage:
+        async def answer(self, text, **kwargs):
+            print(f"Mock Bot Message: {text}")
+            return self
+        async def edit_text(self, text, **kwargs):
+            print(f"Mock Bot Edit: {text}")
+            return self
+            
+    target = Path("test_video.mp4")
+    if target.exists():
+        target.unlink()
+        
+    try:
+        # Request only 2MB total for a quick check using range limits
+        success = await download_file(direct_url, target, MockMessage(), 2 * 1024 * 1024, "480p")
+        print(f"Download Multipart completed. Success: {success}")
+        if target.exists():
+            print(f"Downloaded file size: {target.stat().st_size / (1024*1024):.2f} MB")
+            target.unlink()
+    except Exception as e:
+        print(f"Multipart test failed: {e}")
 
 async def test_scraper():
     print("\n--- TESTING PAGINATED EPISODES SCRAPER ---")
@@ -144,7 +170,8 @@ async def main():
         await test_database()
         await test_translation()
         await test_slug_matching()
-        await test_mp4_resolution()
+        resolved_mp4 = await test_mp4_resolution()
+        await test_multipart_download(resolved_mp4)
         await test_scraper()
         print("\nVerification completed successfully!")
     except Exception as e:

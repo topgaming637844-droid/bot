@@ -297,6 +297,116 @@ async def download_hls(
         logger.exception("Error in process during parallel HLS download")
         return False
 
+async def download_multipart(
+    url: str,
+    target_path: Path,
+    status_message: Message,
+    total_size: int,
+    quality: str,
+    num_parts: int = 6
+) -> bool:
+    """Downloads a direct file in parallel parts using HTTP Range requests to maximize speed."""
+    connector = get_session_connector(limit=50)
+    referer = "https://witanime.pics/"
+    if "mp4upload" in url:
+        referer = "https://www.mp4upload.com/"
+    headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+    
+    chunk_size = total_size // num_parts
+    ranges = []
+    for i in range(num_parts):
+        start = i * chunk_size
+        end = (i + 1) * chunk_size - 1 if i < num_parts - 1 else total_size - 1
+        ranges.append((start, end))
+        
+    part_files = [target_path.with_suffix(f"{target_path.suffix}.part{i}") for i in range(num_parts)]
+    
+    # Tracking progress
+    downloaded_bytes = [0] * num_parts
+    start_time = time.time()
+    last_update = 0
+    
+    async def download_part(part_idx: int, start_byte: int, end_byte: int, part_path: Path, session: aiohttp.ClientSession):
+        part_headers = headers.copy()
+        part_headers["Range"] = f"bytes={start_byte}-{end_byte}"
+        
+        for attempt in range(3):
+            try:
+                async with session.get(url, headers=part_headers, ssl=False, timeout=60) as response:
+                    if response.status not in (200, 206):
+                        raise Exception(f"Part returned status {response.status}")
+                        
+                    with open(part_path, "wb") as f:
+                        async for chunk in response.content.iter_chunked(256 * 1024): # 256 KB chunk
+                            f.write(chunk)
+                            downloaded_bytes[part_idx] += len(chunk)
+                            
+                            # Trigger progress update
+                            nonlocal last_update
+                            total_downloaded = sum(downloaded_bytes)
+                            now = time.time()
+                            if now - last_update >= 4:
+                                last_update = now
+                                elapsed = now - start_time
+                                speed = (total_downloaded / (1024 * 1024)) / elapsed if elapsed > 0 else 0
+                                pct = (total_downloaded / total_size) * 100 if total_size > 0 else 0
+                                size_mb = total_size / (1024 * 1024)
+                                dl_mb = total_downloaded / (1024 * 1024)
+                                
+                                # Arabic status text
+                                text = (
+                                    f"📥 **جاري تحميل الفيديو في أجزاء متوازية (تسريع التحميل فعال)**:\n"
+                                    f"⚙️ الجودة: `{quality}`\n"
+                                    f"📊 النسبة: `{pct:.1f}%`\n"
+                                    f"💾 الحجم: `{dl_mb:.1f} / {size_mb:.1f} ميجابايت`\n"
+                                    f"🚀 السرعة: `{speed:.2f} ميجابايت/ثانية`"
+                                )
+                                try:
+                                    await status_message.edit_text(text, parse_mode="Markdown")
+                                except Exception:
+                                    pass
+                    return True
+            except Exception as e:
+                logger.warning(f"Error downloading part {part_idx}, attempt {attempt+1}: {e}")
+                await asyncio.sleep(1)
+        return False
+
+    try:
+        async with aiohttp.ClientSession(connector=connector) as session:
+            tasks = [
+                download_part(i, start, end, part_files[i], session)
+                for i, (start, end) in enumerate(ranges)
+            ]
+            results = await asyncio.gather(*tasks)
+            
+        if not all(results):
+            logger.error("One or more parts failed to download.")
+            # Clean up parts
+            for p in part_files:
+                if p.exists():
+                    p.unlink()
+            return False
+            
+        # Merge parts
+        logger.info(f"Merging {num_parts} parts into final file: {target_path}")
+        with open(target_path, "wb") as outfile:
+            for p in part_files:
+                with open(p, "rb") as infile:
+                    while True:
+                        chunk = infile.read(1024 * 1024) # 1 MB read buffer
+                        if not chunk:
+                            break
+                        outfile.write(chunk)
+                p.unlink() # Delete part file
+                
+        return True
+    except Exception as e:
+        logger.exception("Error in process during multipart download")
+        for p in part_files:
+            if p.exists():
+                p.unlink()
+        return False
+
 async def download_file(
     url: str,
     target_path: Path,
@@ -309,6 +419,14 @@ async def download_file(
     """
     if ".m3u8" in url or "master" in url or "stream" in url:
         return await download_hls(url, target_path, status_message, quality)
+
+    # Use multipart parallel downloader for direct files to bypass speed caps
+    if total_size > 5 * 1024 * 1024:
+        logger.info(f"Using multipart downloader for direct URL: {url}")
+        success = await download_multipart(url, target_path, status_message, total_size, quality)
+        if success:
+            return True
+        logger.warning("Multipart download failed or not supported. Falling back to single-connection download.")
 
     connector = get_session_connector(limit=50)
     referer = "https://witanime.pics/"

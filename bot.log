@@ -673,3 +673,12 @@ aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host ninjas
 [2026-07-04 03:45:18] [INFO] [bot] [scraper.py:309]: تم جلب 1189 حلقة جديدة من الصفحة 1
 [2026-07-04 03:45:19] [INFO] [bot] [scraper.py:306]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
 [2026-07-04 03:45:19] [INFO] [bot] [scraper.py:319]: إجمالي الحلقات المستخرجة للأنمي one-piece: 1189
+[2026-07-04 03:50:51] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 03:50:54] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 03:50:54] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 03:50:54] [INFO] [bot] [anilist.py:93]: Starting search on AniList for query: Hunter x Hunter (original: هنتر اكس هنتر)
+[2026-07-04 03:50:54] [INFO] [bot] [anilist.py:110]: Scraping page: https://graphql.anilist.co (Direct Media Query)
+[2026-07-04 03:50:54] [INFO] [bot] [anilist.py:155]: AniList search returned 9 normalized titles.
+[2026-07-04 03:50:54] [INFO] [bot] [scraper.py:364]: Attempting to resolve embed playlist from: https://www.mp4upload.com/embed-g1hz8dzxk3em.html
+[2026-07-04 03:50:55] [INFO] [bot] [scraper.py:377]: Resolved direct MP4 stream: https://a3.mp4upload.com:183/d/xsx77cwkz3b4quuol2xr2y2ilov55kfhnj5rh5vuuefuqvdsi3yi4hxln3zcckjwx3vtyjrp/video.mp4
+[2026-07-04 03:50:55] [INFO] [bot] [downloader.py:475]: تقدم التحميل: 0.8% - 0.0/2.0 ميجابايت - السرعة: 0.03 ميجابايت/ثانية
