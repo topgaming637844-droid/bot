@@ -753,3 +753,29 @@ TimeoutError
 [2026-07-04 04:10:52] [INFO] [bot] [downloader.py:477]: تقدم التحميل: 530.5% - 10.6/2.0 ميجابايت - السرعة: 0.32 ميجابايت/ثانية
 [2026-07-04 04:11:16] [INFO] [bot] [downloader.py:477]: تقدم التحميل: 880.5% - 17.6/2.0 ميجابايت - السرعة: 0.31 ميجابايت/ثانية
 [2026-07-04 04:11:36] [INFO] [bot] [downloader.py:477]: تقدم التحميل: 1160.1% - 23.2/2.0 ميجابايت - السرعة: 0.30 ميجابايت/ثانية
+[2026-07-04 04:22:06] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 04:22:26] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 04:22:29] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:22:30] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:22:30] [INFO] [bot] [anilist.py:93]: Starting search on AniList for query: Hunter x Hunter (original: هنتر اكس هنتر)
+[2026-07-04 04:22:30] [INFO] [bot] [anilist.py:110]: Scraping page: https://graphql.anilist.co (Direct Media Query)
+[2026-07-04 04:22:30] [INFO] [bot] [anilist.py:155]: AniList search returned 9 normalized titles.
+[2026-07-04 04:22:30] [INFO] [bot] [scraper.py:368]: Attempting to resolve embed playlist from: https://www.mp4upload.com/embed-g1hz8dzxk3em.html
+[2026-07-04 04:22:30] [INFO] [bot] [scraper.py:381]: Resolved direct MP4 stream: https://a3.mp4upload.com:183/d/xsx77cwkz3b4quuol2xr2y2ilov55kfhnj5rh5vuuefuqvdsizuhfj6qug7vtnpckrj553aq/video.mp4
+[2026-07-04 04:22:31] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 0.8% - 0.0/2.0 ميجابايت - السرعة: 0.02 ميجابايت/ثانية
+[2026-07-04 04:22:39] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 100.8% - 2.0/2.0 ميجابايت - السرعة: 0.22 ميجابايت/ثانية
+[2026-07-04 04:23:04] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 550.8% - 11.0/2.0 ميجابايت - السرعة: 0.33 ميجابايت/ثانية
+[2026-07-04 04:23:16] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 710.1% - 14.2/2.0 ميجابايت - السرعة: 0.31 ميجابايت/ثانية
+[2026-07-04 04:24:21] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 1470.3% - 29.4/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:24:42] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 1570.3% - 31.4/2.0 ميجابايت - السرعة: 0.24 ميجابايت/ثانية
+[2026-07-04 04:25:26] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 04:25:29] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:25:29] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:25:29] [INFO] [bot] [anilist.py:93]: Starting search on AniList for query: Hunter x Hunter (original: هنتر اكس هنتر)
+[2026-07-04 04:25:29] [INFO] [bot] [anilist.py:110]: Scraping page: https://graphql.anilist.co (Direct Media Query)
+[2026-07-04 04:25:29] [INFO] [bot] [anilist.py:155]: AniList search returned 9 normalized titles.
+[2026-07-04 04:25:29] [INFO] [bot] [scraper.py:368]: Attempting to resolve embed playlist from: https://www.mp4upload.com/embed-g1hz8dzxk3em.html
+[2026-07-04 04:25:29] [INFO] [bot] [scraper.py:381]: Resolved direct MP4 stream: https://a3.mp4upload.com:183/d/xsx77cwkz3b4quuol2xr2y2ilov55kfhnj5rh5vuuefuqvdsi3lxutaolm6ljhtvgt4fidtp/video.mp4
+[2026-07-04 04:25:47] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2280.5% - 45.6/2.0 ميجابايت - السرعة: 0.23 ميجابايت/ثانية
+[2026-07-04 04:26:07] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2550.8% - 51.0/2.0 ميجابايت - السرعة: 0.24 ميجابايت/ثانية
+[2026-07-04 04:26:15] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2690.6% - 53.8/2.0 ميجابايت - السرعة: 0.24 ميجابايت/ثانية

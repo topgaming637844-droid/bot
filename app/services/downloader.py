@@ -8,6 +8,7 @@ from typing import Dict, Tuple, Optional
 from urllib.parse import urlparse, parse_qs, urljoin
 from aiogram import Bot
 from aiogram.types import FSInputFile, Message
+from sqlalchemy.ext.asyncio import AsyncSession
 from config import config
 from app.utils.user_agents import get_random_user_agent
 from app.services.anilist import get_connector
@@ -32,6 +33,14 @@ def get_session_connector(limit: int = 50) -> aiohttp.BaseConnector:
             logger.exception("Error in process while initializing proxy connector for downloader")
     return aiohttp.TCPConnector(limit=limit)
 
+def get_referer_for_url(url: str) -> str:
+    """Resolves the best Referer header value to bypass hotlink protection on specific media servers."""
+    if "mp4upload" in url:
+        return "https://www.mp4upload.com/"
+    if "yourupload" in url or "vidcache" in url:
+        return "https://www.yourupload.com/"
+    return "https://witanime.pics/"
+
 async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
     """
     Validates a stream URL by requesting its headers and retrieving the file size.
@@ -48,9 +57,7 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
 
     # Estimate HLS stream size
     if ".m3u8" in url or "master" in url or "stream" in url:
-        referer = "https://witanime.pics/"
-        if "mp4upload" in url:
-            referer = "https://www.mp4upload.com/"
+        referer = get_referer_for_url(url)
         headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
         try:
             logger.info(f"Estimating HLS stream size for playlist: {url}")
@@ -96,9 +103,7 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
             logger.exception("Error in process while estimating HLS playlist size")
         return 0
 
-    referer = "https://witanime.pics/"
-    if "mp4upload" in url:
-        referer = "https://www.mp4upload.com/"
+    referer = get_referer_for_url(url)
     headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
     try:
         async with session.head(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as response:
@@ -179,9 +184,7 @@ async def download_hls(
     stripping fake PNG headers, and merging segments. Reuses ClientSession with large connection pooling.
     """
     connector = get_session_connector(limit=50)
-    referer = "https://witanime.pics/"
-    if "mp4upload" in m3u8_url:
-        referer = "https://www.mp4upload.com/"
+    referer = get_referer_for_url(m3u8_url)
     headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
     
     if config.PROXY_URL:
@@ -303,13 +306,11 @@ async def download_multipart(
     status_message: Message,
     total_size: int,
     quality: str,
-    num_parts: int = 10
+    num_parts: int = 25
 ) -> bool:
     """Downloads a direct file in parallel parts using HTTP Range requests to maximize speed."""
     connector = get_session_connector(limit=50)
-    referer = "https://witanime.pics/"
-    if "mp4upload" in url:
-        referer = "https://www.mp4upload.com/"
+    referer = get_referer_for_url(url)
     headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
     
     chunk_size = total_size // num_parts
@@ -430,9 +431,7 @@ async def download_file(
         logger.warning("Multipart download failed or not supported. Falling back to single-connection download.")
 
     connector = get_session_connector(limit=50)
-    referer = "https://witanime.pics/"
-    if "mp4upload" in url:
-        referer = "https://www.mp4upload.com/"
+    referer = get_referer_for_url(url)
     headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
     if config.PROXY_URL:
         logger.info(f"Proxy used for request: {config.PROXY_URL}")
@@ -490,7 +489,9 @@ async def process_and_send_video(
     bot: Bot,
     message: Message,
     qualities: Dict[str, str],
-    requested_quality: str = "auto"
+    requested_quality: str = "auto",
+    db_session: Optional[AsyncSession] = None,
+    play_url: Optional[str] = None
 ):
     """
     Downloads the selected quality, checks file sizes against Bot API limitations,
@@ -546,14 +547,81 @@ async def process_and_send_video(
         await status_msg.edit_text("📤 جاري رفع الفيديو إلى تلغرام...")
         video_file = FSInputFile(str(temp_file_path))
         
-        # Check for custom thumbnail
-        thumb_path = Path(__file__).parent.parent / "data" / "custom_thumb.jpg"
-        thumb_input = FSInputFile(str(thumb_path)) if thumb_path.exists() else None
+        # Resolve anime title and episode number
+        anime_title = "أنمي"
+        ep_num = ""
         
+        from sqlalchemy.ext.asyncio import AsyncSession
+        if play_url and db_session:
+            try:
+                from sqlalchemy import select
+                from app.database.models import EpisodeCache, SearchCache
+                stmt = select(EpisodeCache).where(EpisodeCache.play_url == play_url)
+                res = await db_session.execute(stmt)
+                ep_cache = res.scalars().first()
+                if ep_cache:
+                    ep_num = ep_cache.ep_number
+                    stmt_search = select(SearchCache).where(SearchCache.anilist_id == ep_cache.anilist_id)
+                    res_search = await db_session.execute(stmt_search)
+                    search_cache = res_search.scalars().first()
+                    if search_cache:
+                        anime_title = search_cache.title_english or search_cache.title_romaji
+                        if anime_title.startswith("WITANIME:"):
+                            anime_title = search_cache.title_english
+            except Exception:
+                logger.exception("Error looking up metadata from DB")
+                
+        # Parse fallback from play_url if metadata not found
+        if (anime_title == "أنمي" or not ep_num) and play_url:
+            try:
+                from urllib.parse import unquote
+                decoded = unquote(play_url)
+                parts = [p for p in decoded.strip("/").split("/") if p]
+                if parts:
+                    slug_part = parts[-1]
+                    if "الحلقة" in slug_part:
+                        ep_parts = slug_part.split("الحلقة")
+                        ep_num = ep_parts[-1].strip("-").strip()
+                        anime_slug = ep_parts[0].strip("-").strip()
+                        anime_title = anime_slug.replace("-", " ").title()
+                    else:
+                        anime_title = slug_part.replace("-", " ").title()
+            except Exception:
+                pass
+                
+        # Get bot username
+        bot_info = await bot.get_me()
+        bot_username = f"@{bot_info.username}" if bot_info else ""
+        
+        # Format the Arabic caption
+        caption = (
+            f"🎬 **{anime_title}**\n"
+            f"🔢 **الحلقة:** `{ep_num}`\n"
+            f"⚙️ **الجودة:** `{quality}`\n"
+            f"💾 **الحجم:** `{size_mb:.1f} ميجابايت`\n\n"
+            f"🎥 **مشاهدة ممتعة!** ✨🍿\n\n"
+            f"📢 **عبر البوت:** {bot_username}"
+        )
+        
+        # Check for custom thumbnail File ID or File Path
+        thumb_path = Path(__file__).parent.parent / "data" / "custom_thumb.jpg"
+        thumb_id_path = Path(__file__).parent.parent / "data" / "custom_thumb_id.txt"
+        
+        thumb_input = None
+        if thumb_id_path.exists():
+            try:
+                with open(thumb_id_path, "r") as f:
+                    thumb_input = f.read().strip() or None
+            except Exception:
+                pass
+        
+        if not thumb_input and thumb_path.exists():
+            thumb_input = FSInputFile(str(thumb_path))
+            
         await message.answer_video(
             video=video_file,
             thumbnail=thumb_input,
-            caption=f"🎥 **مشاهدة ممتعة!**\nالجودة: `{quality}`\nالحجم: `{size_mb:.1f} ميجابايت`",
+            caption=caption,
             supports_streaming=True,
             parse_mode="Markdown"
         )

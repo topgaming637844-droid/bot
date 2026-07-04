@@ -244,6 +244,8 @@ async def handle_download_callback(callback: CallbackQuery, db_session: AsyncSes
         bot=callback.bot,
         message=callback.message,
         qualities=dl_cache.qualities,
-        requested_quality=requested_quality
+        requested_quality=requested_quality,
+        db_session=db_session,
+        play_url=dl_cache.play_url
     )
 

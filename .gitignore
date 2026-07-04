@@ -17,3 +17,9 @@ ENV/
 # IDEs
 .vscode/
 .idea/
+
+# Temp test files
+test_video.mp4
+test_video_new.mp4
+test_bot.db
+scratch/test_yourupload.py
