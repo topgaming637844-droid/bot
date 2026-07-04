@@ -779,3 +779,26 @@ TimeoutError
 [2026-07-04 04:25:47] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2280.5% - 45.6/2.0 ميجابايت - السرعة: 0.23 ميجابايت/ثانية
 [2026-07-04 04:26:07] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2550.8% - 51.0/2.0 ميجابايت - السرعة: 0.24 ميجابايت/ثانية
 [2026-07-04 04:26:15] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 2690.6% - 53.8/2.0 ميجابايت - السرعة: 0.24 ميجابايت/ثانية
+[2026-07-04 04:27:00] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 3570.3% - 71.4/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:29:25] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 6330.5% - 126.6/2.0 ميجابايت - السرعة: 0.31 ميجابايت/ثانية
+[2026-07-04 04:31:24] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-04 04:31:27] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:31:27] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'هنتر اكس هنتر' to 'Hunter x Hunter' using Google Translate API
+[2026-07-04 04:31:27] [INFO] [bot] [anilist.py:93]: Starting search on AniList for query: Hunter x Hunter (original: هنتر اكس هنتر)
+[2026-07-04 04:31:27] [INFO] [bot] [anilist.py:110]: Scraping page: https://graphql.anilist.co (Direct Media Query)
+[2026-07-04 04:31:27] [INFO] [bot] [anilist.py:155]: AniList search returned 9 normalized titles.
+[2026-07-04 04:31:27] [INFO] [bot] [scraper.py:368]: Attempting to resolve embed playlist from: https://www.mp4upload.com/embed-g1hz8dzxk3em.html
+[2026-07-04 04:31:28] [INFO] [bot] [scraper.py:381]: Resolved direct MP4 stream: https://a3.mp4upload.com:183/d/xsx77cwkz3b4quuol2xr2y2ilov55kfhnj5rh5vuuefuqvdsizyqsoindyrgtfsmbdyhqz3n/video.mp4
+[2026-07-04 04:32:04] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 8100.8% - 162.0/2.0 ميجابايت - السرعة: 0.28 ميجابايت/ثانية
+[2026-07-04 04:32:12] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 8160.9% - 163.2/2.0 ميجابايت - السرعة: 0.28 ميجابايت/ثانية
+[2026-07-04 04:33:53] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 9520.3% - 190.4/2.0 ميجابايت - السرعة: 0.28 ميجابايت/ثانية
+[2026-07-04 04:34:09] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 9700.8% - 194.0/2.0 ميجابايت - السرعة: 0.28 ميجابايت/ثانية
+[2026-07-04 04:34:50] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 10130.5% - 202.6/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:35:50] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 10700.8% - 214.0/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:36:11] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 10960.9% - 219.2/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:36:19] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 11060.1% - 221.2/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:37:19] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 12090.6% - 241.8/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:37:23] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 12170.3% - 243.4/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:37:27] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 12220.3% - 244.4/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:37:47] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 12560.9% - 251.2/2.0 ميجابايت - السرعة: 0.27 ميجابايت/ثانية
+[2026-07-04 04:38:33] [INFO] [bot] [downloader.py:478]: تقدم التحميل: 13360.1% - 267.2/2.0 ميجابايت - السرعة: 0.28 ميجابايت/ثانية
