@@ -26,6 +26,65 @@ from app.services.worker import recover_stuck_tasks, task_consumer_worker
 bot: Bot = None
 dp: Dispatcher = None
 
+async def restore_persistent_settings(bot: Bot):
+    from app.utils.settings import get_setting
+    from config import config
+    from pathlib import Path
+    import aiohttp
+    
+    # 1. Restore Channel Username
+    saved_channel = await get_setting("channel_username")
+    if saved_channel:
+        config.CHANNEL_USERNAME = saved_channel
+        logger.info(f"Restored channel username from database: {saved_channel}")
+        
+    # 2. Restore Custom Thumbnail Photo
+    thumb_file_id = await get_setting("custom_thumb_file_id")
+    thumb_url = await get_setting("custom_thumb_url")
+    
+    if thumb_file_id or thumb_url:
+        data_dir = Path(__file__).parent / "app" / "data"
+        data_dir.mkdir(exist_ok=True)
+        thumb_path = data_dir / "custom_thumb.jpg"
+        thumb_id_path = data_dir / "custom_thumb_id.txt"
+        
+        if thumb_file_id:
+            with open(thumb_id_path, "w") as f_id:
+                f_id.write(thumb_file_id)
+            
+        if not thumb_path.exists():
+            if thumb_file_id:
+                logger.info(f"Local thumbnail missing on boot. Restoring file ID: {thumb_file_id}")
+                try:
+                    get_file_url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getFile?file_id={thumb_file_id}"
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(get_file_url) as resp:
+                            if resp.status == 200:
+                                res_json = await resp.json()
+                                if res_json.get("ok"):
+                                    file_path = res_json["result"]["file_path"]
+                                    download_url = f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file_path}"
+                                    async with session.get(download_url) as img_resp:
+                                        if img_resp.status == 200:
+                                            image_bytes = await img_resp.read()
+                                            with open(thumb_path, "wb") as f:
+                                                f.write(image_bytes)
+                                            logger.info("Custom background thumbnail successfully restored on boot.")
+                except Exception:
+                    logger.exception("Failed to restore background thumbnail on boot")
+            elif thumb_url:
+                logger.info(f"Local thumbnail missing on boot. Restoring from URL: {thumb_url}")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(thumb_url) as resp:
+                            if resp.status == 200:
+                                image_bytes = await resp.read()
+                                with open(thumb_path, "wb") as f:
+                                    f.write(image_bytes)
+                                logger.info("Custom background thumbnail successfully restored from URL on boot.")
+                except Exception:
+                    logger.exception("Failed to restore background thumbnail from URL on boot")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Validate configuration
@@ -83,6 +142,10 @@ async def lifespan(app: FastAPI):
     
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
+
+    # 4.5. Restore Settings
+    logger.info("Restoring system settings from database...")
+    await restore_persistent_settings(bot)
 
     # 5. Bind Middlewares
     from app.middlewares.subscription import SubscriptionMiddleware

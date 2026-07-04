@@ -100,3 +100,11 @@ class PersistentTaskQueue(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+class SystemSettings(Base):
+    """Stores persistent configuration settings like custom thumbnails and channel verification settings."""
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True, index=True)
+    value = Column(Text, nullable=True)
+

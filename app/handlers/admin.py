@@ -144,6 +144,11 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
                     with open(thumb_path, "wb") as f:
                         f.write(image_bytes)
                         
+                    # Save it in database!
+                    from app.utils.settings import set_setting, delete_setting
+                    await set_setting("custom_thumb_file_id", file_id)
+                    await delete_setting("custom_thumb_url")
+                    
                     # Clean up custom_thumb_id.txt if it exists to avoid conflicts
                     if thumb_id_path.exists():
                         thumb_id_path.unlink()
@@ -221,6 +226,11 @@ async def handle_set_thumbnail_url(message: Message, db_session: AsyncSession):
                     image_bytes = await resp.read()
                     with open(thumb_path, "wb") as f:
                         f.write(image_bytes)
+                    
+                    # Save it in database!
+                    from app.utils.settings import set_setting, delete_setting
+                    await set_setting("custom_thumb_url", target_url)
+                    await delete_setting("custom_thumb_file_id")
                     
                     # Clean up custom_thumb_id.txt if it exists to avoid conflicts
                     if thumb_id_path.exists():
@@ -607,6 +617,8 @@ async def handle_admin_disable_sub(callback: CallbackQuery, db_session: AsyncSes
         return
         
     config.CHANNEL_USERNAME = None
+    from app.utils.settings import delete_setting
+    await delete_setting("channel_username")
     await callback.answer("✅ تم تعطيل الاشتراك الإجباري بنجاح.", show_alert=True)
     await handle_admin_toggle_sub(callback, db_session)
 
@@ -645,6 +657,8 @@ async def process_admin_channel(message: Message, db_session: AsyncSession, stat
         return
         
     config.CHANNEL_USERNAME = text
+    from app.utils.settings import set_setting
+    await set_setting("channel_username", text)
     await state.clear()
     await message.answer(f"✅ تم تحديث قناة الاشتراك الإجباري بنجاح إلى: <b>{text}</b>", parse_mode="HTML")
 
@@ -702,6 +716,11 @@ async def process_admin_bg_photo(message: Message, db_session: AsyncSession, sta
                                 image_bytes = await img_resp.read()
                                 with open(thumb_path, "wb") as f:
                                     f.write(image_bytes)
+                                    
+                                # Save it in database!
+                                from app.utils.settings import set_setting, delete_setting
+                                await set_setting("custom_thumb_file_id", file_id)
+                                await delete_setting("custom_thumb_url")
                                     
                                 with open(thumb_id_path, "w") as f_id:
                                     f_id.write(file_id)
