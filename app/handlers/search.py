@@ -266,19 +266,6 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
         await status_msg.edit_text("❌ فشل في تحميل الحلقات من قاعدة البيانات.")
         return
 
-    # Calculate max_episode
-    ep_numbers = []
-    for ep in cached_episodes:
-        try:
-            ep_numbers.append(float(ep.ep_number))
-        except ValueError:
-            pass
-            
-    if ep_numbers:
-        max_episode = int(max(ep_numbers))
-    else:
-        max_episode = len(cached_episodes)
-        
     await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=status_msg.message_id)
     
     # Store details in FSM context
@@ -290,33 +277,211 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
         duration=cache_entry.duration or (scraped_data.get("duration") if scraped_data else None)
     )
     
-    # Transition to waiting for episode number
-    await state.set_state(SearchStates.waiting_for_episode)
     await callback.answer()
 
-    details_text = (
-        f"🎬 **الأنمي المختار**: {title}\n"
-        f"📝 القصة: {cache_entry.description[:250] + '...' if cache_entry.description else 'لا يوجد'}\n\n"
-        f"الرجاء كتابة رقم الحلقة التي تريدها من 1 إلى {max_episode} (آخر حلقة نزلت حالياً هي {max_episode}):"
+    await render_episode_keyboard(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id,
+        anilist_id=anilist_id,
+        db_session=db_session
     )
+
+
+def parse_ep_num(ep_str: str) -> float:
+    try:
+        return float(ep_str)
+    except ValueError:
+        import re
+        match = re.search(r'(\d+(?:\.\d+)?)', ep_str)
+        if match:
+            return float(match.group(1))
+        return 999999.0
+
+
+async def render_episode_keyboard(
+    bot,
+    chat_id,
+    message_id: Optional[int],
+    anilist_id: int,
+    db_session: AsyncSession,
+    start_ep: Optional[int] = None,
+    end_ep: Optional[int] = None
+):
+    stmt = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
+    res = await db_session.execute(stmt)
+    cache_entry = res.scalars().first()
+    if not cache_entry:
+        return
+        
+    title = cache_entry.title_english or cache_entry.title_romaji
+    if title.startswith("WITANIME:"):
+        title = cache_entry.title_english
+        
+    stmt_eps = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
+    res_eps = await db_session.execute(stmt_eps)
+    cached_episodes = res_eps.scalars().all()
     
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⭐ إضافة إلى المفضلة", callback_data=f"fav_add:{anilist_id}")]
-    ])
+    cached_episodes.sort(key=lambda x: parse_ep_num(x.ep_number))
+    total_episodes = len(cached_episodes)
     
-    if cache_entry.image_url:
-        await callback.message.answer_photo(
-            photo=cache_entry.image_url,
-            caption=details_text,
-            reply_markup=markup,
-            parse_mode="Markdown"
+    if total_episodes > 100 and start_ep is None:
+        # Show 100-episode blocks
+        blocks = []
+        for start in range(1, total_episodes + 1, 100):
+            end = min(start + 99, total_episodes)
+            blocks.append(InlineKeyboardButton(
+                text=f"📦 {start} - {end}",
+                callback_data=f"ep_block:{anilist_id}:{start}:{end}"
+            ))
+        inline_keyboard = [blocks[i:i+2] for i in range(0, len(blocks), 2)]
+        inline_keyboard.append([InlineKeyboardButton(text="⭐ إضافة إلى المفضلة", callback_data=f"fav_add:{anilist_id}")])
+        markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+        
+        text = (
+            f"🎬 **الأنمي المختار**: {title}\n"
+            f"📝 القصة: {cache_entry.description[:250] + '...' if cache_entry.description else 'لا يوجد'}\n\n"
+            f"الرجاء اختيار مجموعة الحلقات:"
         )
     else:
-        await callback.message.answer(
-            details_text,
-            reply_markup=markup,
-            parse_mode="Markdown"
+        grid_eps = []
+        if start_ep is not None and end_ep is not None:
+            for ep in cached_episodes:
+                val = parse_ep_num(ep.ep_number)
+                if start_ep <= val <= end_ep:
+                    grid_eps.append(ep)
+        else:
+            grid_eps = cached_episodes
+            
+        inline_keyboard = []
+        row = []
+        for ep in grid_eps:
+            row.append(InlineKeyboardButton(
+                text=f"الحلقة {ep.ep_number}",
+                callback_data=f"sel_ep_click:{anilist_id}:{ep.ep_number}"
+            ))
+            if len(row) == 3:
+                inline_keyboard.append(row)
+                row = []
+        if row:
+            inline_keyboard.append(row)
+            
+        bottom_row = []
+        if total_episodes > 100:
+            bottom_row.append(InlineKeyboardButton(text="« رجوع للقائمة", callback_data=f"ep_blocks_home:{anilist_id}"))
+        bottom_row.append(InlineKeyboardButton(text="⭐ إضافة إلى المفضلة", callback_data=f"fav_add:{anilist_id}"))
+        inline_keyboard.append(bottom_row)
+        markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+        
+        range_str = f" من {start_ep} إلى {end_ep}" if start_ep else ""
+        text = (
+            f"🎬 **{title}**\n"
+            f"📦 الحلقات{range_str}:\n\n"
+            f"الرجاء اختيار الحلقة التي ترغب في مشاهدتها:"
         )
+        
+    if message_id:
+        try:
+            if cache_entry.image_url:
+                await bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    caption=text,
+                    reply_markup=markup,
+                    parse_mode="Markdown"
+                )
+            else:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    reply_markup=markup,
+                    parse_mode="Markdown"
+                )
+        except Exception:
+            # Fallback to sending new if edit fails
+            if cache_entry.image_url:
+                await bot.send_photo(chat_id=chat_id, photo=cache_entry.image_url, caption=text, reply_markup=markup, parse_mode="Markdown")
+            else:
+                await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode="Markdown")
+    else:
+        if cache_entry.image_url:
+            await bot.send_photo(chat_id=chat_id, photo=cache_entry.image_url, caption=text, reply_markup=markup, parse_mode="Markdown")
+        else:
+            await bot.send_message(chat_id=chat_id, text=text, reply_markup=markup, parse_mode="Markdown")
+
+
+@router.callback_query(F.data.startswith("ep_block:"))
+async def handle_ep_block(callback: CallbackQuery, db_session: AsyncSession):
+    parts = callback.data.split(":")
+    anilist_id = int(parts[1])
+    start = int(parts[2])
+    end = int(parts[3])
+    await callback.answer()
+    await render_episode_keyboard(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id,
+        anilist_id=anilist_id,
+        db_session=db_session,
+        start_ep=start,
+        end_ep=end
+    )
+
+
+@router.callback_query(F.data.startswith("ep_blocks_home:"))
+async def handle_ep_blocks_home(callback: CallbackQuery, db_session: AsyncSession):
+    parts = callback.data.split(":")
+    anilist_id = int(parts[1])
+    await callback.answer()
+    await render_episode_keyboard(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id,
+        anilist_id=anilist_id,
+        db_session=db_session,
+        start_ep=None
+    )
+
+
+@router.callback_query(F.data.startswith("sel_ep_click:"))
+async def handle_sel_ep_click(callback: CallbackQuery, db_session: AsyncSession):
+    parts = callback.data.split(":")
+    anilist_id = int(parts[1])
+    ep_num = parts[2]
+    
+    await callback.answer()
+    
+    from app.handlers.download import prompt_quality_selection
+    
+    stmt = select(EpisodeCache).where(
+        (EpisodeCache.anilist_id == anilist_id) & (EpisodeCache.ep_number == ep_num)
+    )
+    res = await db_session.execute(stmt)
+    ep_entry = res.scalar_one_or_none()
+    if not ep_entry:
+        await callback.message.answer("❌ انتهت صلاحية الجلسة. يرجى اختيار الحلقة مجدداً.")
+        return
+        
+    stmt_s = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
+    res_s = await db_session.execute(stmt_s)
+    cache_entry = res_s.scalars().first()
+    title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
+    if title.startswith("WITANIME:"):
+        title = cache_entry.title_english
+        
+    duration = cache_entry.duration if cache_entry else None
+    
+    await prompt_quality_selection(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        anilist_id=anilist_id,
+        ep_number=ep_num,
+        play_url=ep_entry.play_url,
+        anime_title=title,
+        duration=duration,
+        db_session=db_session
+    )
 
 @router.callback_query(F.data.startswith("fav_add:"))
 async def handle_add_favorite(callback: CallbackQuery, db_session: AsyncSession):

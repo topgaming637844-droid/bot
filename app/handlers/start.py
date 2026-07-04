@@ -52,6 +52,23 @@ async def send_welcome_panel(message: Message):
 @router.message(CommandStart())
 async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContext):
     """Handles the /start command, supporting deep linking."""
+    from app.database.models import User
+    from sqlalchemy import select
+    from app.utils.logging_config import logger
+    try:
+        user_id = message.from_user.id
+        username = message.from_user.username
+        stmt_user = select(User).where(User.user_id == user_id)
+        res_user = await db_session.execute(stmt_user)
+        existing_user = res_user.scalar_one_or_none()
+        if not existing_user:
+            new_user = User(user_id=user_id, username=username)
+            db_session.add(new_user)
+            await db_session.commit()
+            logger.info(f"Registered new user in database: {user_id}")
+    except Exception:
+        logger.exception("Error saving user to database on /start")
+
     args = message.text.split()
     if len(args) > 1:
         deep_link = args[1]

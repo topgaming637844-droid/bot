@@ -1,14 +1,22 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
-from sqlalchemy import select
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
+import asyncio
 
 from config import config
 from app.database.models import BotAdmin
 from app.utils.auth import is_admin
 from app.utils.logging_config import logger
+
+class AdminStates(StatesGroup):
+    waiting_for_broadcast = State()
+    waiting_for_channel = State()
+    waiting_for_bg_photo = State()
 
 router = Router(name="admin")
 
@@ -408,3 +416,301 @@ async def cmd_post_episode(message: Message, db_session: AsyncSession):
         logger.exception("Error broadcasting episode to channel")
         import html
         await status_msg.edit_text(f"❌ حدث خطأ أثناء البث: {html.escape(str(e))}")
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: Message, db_session: AsyncSession):
+    # Security check
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        await message.answer("❌ عذراً، لا تملك الصلاحية للوصول إلى لوحة التحكم.")
+        return
+        
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 إحصائيات النظام", callback_data="admin_stats"),
+            InlineKeyboardButton(text="📢 إذاعة جماعية", callback_data="admin_broadcast")
+        ],
+        [
+            InlineKeyboardButton(text="🔒 قفل الاشتراك الإجباري", callback_data="admin_toggle_sub"),
+            InlineKeyboardButton(text="🖼️ تغيير الخلفية", callback_data="admin_set_bg")
+        ]
+    ])
+    
+    await message.answer(
+        "🛠️ <b>لوحة التحكم الإدارية (The Dream Dashboard)</b>\n\n"
+        "مرحباً بك في لوحة تحكم إدارة البوت. يرجى اختيار الإجراء المطلوب من القائمة أدناه:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin_stats")
+async def handle_admin_stats(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    
+    # 1. Total users
+    from app.database.models import User, DownloadCache
+    from sqlalchemy import func
+    stmt_users = select(func.count(User.id))
+    res_users = await db_session.execute(stmt_users)
+    total_users = res_users.scalar() or 0
+    
+    # 2. Total cached downloads
+    stmt_dl = select(func.count(DownloadCache.id))
+    res_dl = await db_session.execute(stmt_dl)
+    total_dl = res_dl.scalar() or 0
+    
+    # 3. System resources
+    import psutil
+    process = psutil.Process()
+    ram_usage = process.memory_info().rss / (1024 * 1024) # MB
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    
+    stats_text = (
+        f"📊 <b>إحصائيات النظام الحالية:</b>\n\n"
+        f"👥 <b>إجمالي المستخدمين:</b> `{total_users}` مستخدم\n"
+        f"💾 <b>الملفات المخزنة في الكاش:</b> `{total_dl}` حلقة/فيلم\n"
+        f"🖥️ <b>استهلاك الذاكرة (RAM):</b> `{ram_usage:.1f} ميجابايت`\n"
+        f"⚙️ <b>استهلاك المعالج (CPU):</b> `{cpu_percent:.1f}%`\n"
+    )
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="« رجوع للوحة التحكم", callback_data="admin_home")]
+    ])
+    
+    await callback.message.edit_text(stats_text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin_home")
+async def handle_admin_home(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 إحصائيات النظام", callback_data="admin_stats"),
+            InlineKeyboardButton(text="📢 إذاعة جماعية", callback_data="admin_broadcast")
+        ],
+        [
+            InlineKeyboardButton(text="🔒 قفل الاشتراك الإجباري", callback_data="admin_toggle_sub"),
+            InlineKeyboardButton(text="🖼️ تغيير الخلفية", callback_data="admin_set_bg")
+        ]
+    ])
+    
+    await callback.message.edit_text(
+        "🛠️ <b>لوحة التحكم الإدارية (The Dream Dashboard)</b>\n\n"
+        "مرحباً بك في لوحة تحكم إدارة البوت. يرجى اختيار الإجراء المطلوب من القائمة أدناه:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin_broadcast")
+async def handle_admin_broadcast(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_for_broadcast)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_home")]
+    ])
+    
+    await callback.message.edit_text(
+        "📢 <b>قسم الإذاعة الجماعية:</b>\n\n"
+        "يرجى إرسال الرسالة التي ترغب في بثها لجميع مستخدمي البوت.\n"
+        "يمكنك استخدام التنسيق الغني (رابط، خط عريض، إلخ).",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminStates.waiting_for_broadcast)
+async def process_admin_broadcast(message: Message, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        return
+        
+    await state.clear()
+    status_msg = await message.answer("🔄 جاري بدء البث الجماعي للمستخدمين...")
+    
+    from app.database.models import User
+    stmt = select(User.user_id)
+    res = await db_session.execute(stmt)
+    user_ids = res.scalars().all()
+    
+    success_count = 0
+    fail_count = 0
+    
+    for uid in user_ids:
+        try:
+            await message.copy_to(chat_id=uid)
+            success_count += 1
+            await asyncio.sleep(0.05) # Rate limit protection
+        except Exception:
+            fail_count += 1
+            
+    await status_msg.edit_text(
+        f"✅ <b>اكتمل البث الجماعي بنجاح:</b>\n\n"
+        f"🟢 تم الإرسال إلى: `{success_count}` مستخدم\n"
+        f"🔴 فشل الإرسال لـ: `{fail_count}` مستخدم",
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin_toggle_sub")
+async def handle_admin_toggle_sub(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    
+    active_channel = config.CHANNEL_USERNAME or "تعطيل / Disabled"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✏️ تغيير القناة", callback_data="admin_change_channel"),
+            InlineKeyboardButton(text="❌ تعطيل الاشتراك الإجباري", callback_data="admin_disable_sub")
+        ],
+        [InlineKeyboardButton(text="« رجوع للوحة التحكم", callback_data="admin_home")]
+    ])
+    
+    await callback.message.edit_text(
+        f"🔒 <b>إعدادات الاشتراك الإجباري:</b>\n\n"
+        f"القناة الحالية: <b>{active_channel}</b>\n\n"
+        f"يمكنك تغيير القناة أو تعطيل الاشتراك تماماً باستخدام الأزرار أدناه:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "admin_disable_sub")
+async def handle_admin_disable_sub(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    config.CHANNEL_USERNAME = None
+    await callback.answer("✅ تم تعطيل الاشتراك الإجباري بنجاح.", show_alert=True)
+    await handle_admin_toggle_sub(callback, db_session)
+
+
+@router.callback_query(F.data == "admin_change_channel")
+async def handle_admin_change_channel(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_for_channel)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_toggle_sub")]
+    ])
+    
+    await callback.message.edit_text(
+        "✏️ <b>تغيير قناة الاشتراك الإجباري:</b>\n\n"
+        "يرجى إرسال معرف القناة الجديد يبدأ بـ `@` (مثال: `@botanmie_channel`):",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminStates.waiting_for_channel)
+async def process_admin_channel(message: Message, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        return
+        
+    text = message.text.strip()
+    if not text.startswith("@"):
+        await message.answer("❌ معرف غير صالح. يجب أن يبدأ المعرف بـ `@` مثل: `@botanmie_channel`. يرجى المحاولة مجدداً.")
+        return
+        
+    config.CHANNEL_USERNAME = text
+    await state.clear()
+    await message.answer(f"✅ تم تحديث قناة الاشتراك الإجباري بنجاح إلى: <b>{text}</b>", parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin_set_bg")
+async def handle_admin_set_bg(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await callback.answer("❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_for_bg_photo)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_home")]
+    ])
+    
+    await callback.message.edit_text(
+        "🖼️ <b>تغيير خلفية الفيديوهات:</b>\n\n"
+        "يرجى إرسال الصورة مباشرة في هذه المحادثة كملف صورة عادي.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.message(AdminStates.waiting_for_bg_photo, F.photo)
+async def process_admin_bg_photo(message: Message, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        return
+        
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    
+    status_msg = await message.answer("🔄 جاري تحميل وحفظ الصورة المصغرة عبر الاتصال المباشر...")
+    
+    import aiohttp
+    try:
+        data_dir = Path(__file__).parent.parent / "data"
+        data_dir.mkdir(exist_ok=True)
+        thumb_path = data_dir / "custom_thumb.jpg"
+        thumb_id_path = data_dir / "custom_thumb_id.txt"
+        
+        get_file_url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getFile?file_id={file_id}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(get_file_url) as resp:
+                if resp.status == 200:
+                    res_json = await resp.json()
+                    if res_json.get("ok"):
+                        file_path = res_json["result"]["file_path"]
+                        download_url = f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file_path}"
+                        async with session.get(download_url) as img_resp:
+                            if img_resp.status == 200:
+                                image_bytes = await img_resp.read()
+                                with open(thumb_path, "wb") as f:
+                                    f.write(image_bytes)
+                                    
+                                with open(thumb_id_path, "w") as f_id:
+                                    f_id.write(file_id)
+                                    
+                                await status_msg.edit_text("✅ تم تحديث خلفية الفيديوهات الافتراضية بنجاح.")
+                                await state.clear()
+                                return
+        await status_msg.edit_text("❌ فشل تحميل الصورة من خوادم تيليجرام.")
+    except Exception as e:
+        logger.exception("Error processing background photo")
+        import html
+        await status_msg.edit_text(f"❌ فشل تحديث الصورة: {html.escape(str(e))}")

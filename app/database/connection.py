@@ -8,11 +8,21 @@ from app.database.models import Base
 is_sqlite = config.DATABASE_URL.startswith("sqlite")
 connect_args = {"check_same_thread": False} if is_sqlite else {}
 
-async_engine = create_async_engine(
-    config.DATABASE_URL,
-    echo=False,
-    connect_args=connect_args
-)
+if is_sqlite:
+    async_engine = create_async_engine(
+        config.DATABASE_URL,
+        echo=False,
+        connect_args=connect_args
+    )
+else:
+    async_engine = create_async_engine(
+        config.DATABASE_URL,
+        echo=False,
+        pool_size=100,
+        max_overflow=50,
+        pool_recycle=1800,
+        connect_args=connect_args
+    )
 
 # Async session factory
 AsyncSessionLocal = sessionmaker(

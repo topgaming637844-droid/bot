@@ -7,3 +7,6 @@ asyncpg>=0.29.0
 aiosqlite>=0.20.0
 python-dotenv>=1.0.1
 brotli>=1.1.0
+fastapi>=0.110.0
+uvicorn>=0.28.0
+psutil>=5.9.8

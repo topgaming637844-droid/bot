@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.handlers.search import SearchStates
-from app.database.models import EpisodeCache, DownloadCache
+from app.database.models import EpisodeCache, DownloadCache, SearchCache
 from app.services.scraper import search_anime_scraper, get_episodes_scraper, get_download_links_scraper
 from app.services.downloader import process_and_send_video
 from app.utils.logging_config import logger
@@ -139,75 +139,21 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
         play_url = matched_ep["play_url"]
         logger.info(f"تطابق الحلقة {matched_ep['ep_number']}: رابط المشاهدة هو {play_url}")
         
-        # Check download cache
-        dl_stmt = select(DownloadCache).where(DownloadCache.play_url == play_url)
-        dl_res = await db_session.execute(dl_stmt)
-        cached_dl = dl_res.scalar_one_or_none()
-        
-        qualities = {}
-        db_cache_id = None
-        
-        if cached_dl and (datetime.now(timezone.utc) - cached_dl.created_at) < timedelta(hours=CACHE_EXPIRATION_HOURS):
-            logger.info(f"تم العثور على روابط التحميل في الكاش للرابط: {play_url}")
-            qualities = cached_dl.qualities
-            db_cache_id = cached_dl.id
-        else:
-            logger.info(f"روابط التحميل غير متوفرة في الكاش للرابط: {play_url}. جاري استخراج الروابط...")
-            await status_msg.edit_text("🔄 جاري استخراج روابط التحميل المباشرة للحلقة...")
-            scraped_links = await get_download_links_scraper(play_url)
-            
-            if not scraped_links:
-                logger.error(f"فشل في استخراج روابط التحميل من رابط المشاهدة: {play_url}")
-                await status_msg.edit_text("❌ فشل في استخراج روابط التحميل لهذه الحلقة. يرجى المحاولة لاحقاً.")
-                await state.clear()
-                return
-                
-            qualities = scraped_links
-            
-            # Cache resolved links
-            if cached_dl:
-                logger.info(f"تحديث كاش روابط التحميل المنتهي للرابط: {play_url}")
-                cached_dl.qualities = qualities
-                cached_dl.duration = duration
-                cached_dl.created_at = datetime.now(timezone.utc)
-                db_session.add(cached_dl)
-                await db_session.commit()
-                db_cache_id = cached_dl.id
-            else:
-                logger.info(f"إنشاء كاش روابط تحميل جديد للرابط: {play_url}")
-                new_dl = DownloadCache(
-                    play_url=play_url,
-                    qualities=qualities,
-                    duration=duration
-                )
-                db_session.add(new_dl)
-                await db_session.commit()
-                db_cache_id = new_dl.id
-                
-        # Prompt user to choose video quality
-        keyboard_buttons = [
-            [InlineKeyboardButton(text="⭐ تلقائي (حجم ذكي <= 2 جيجابايت)", callback_data=f"dl:auto:{db_cache_id}")]
-        ]
-        
-        quality_row = []
-        for q in ["1080p", "720p", "480p", "360p"]:
-            if q in qualities:
-                quality_row.append(InlineKeyboardButton(text=q, callback_data=f"dl:{q}:{db_cache_id}"))
-        if quality_row:
-            keyboard_buttons.append(quality_row)
-            
-        markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-        
-        await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
-        await message.answer(
-            f"🎬 **الأنمي**: {anime_title}\n"
-            f"🔢 **الحلقة**: {matched_ep['ep_number']}\n\n"
-            f"اختر جودة التحميل المفضلة أدناه:",
-            reply_markup=markup,
-            parse_mode="Markdown"
+        # Check download cache and prompt quality
+        await prompt_quality_selection(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            anilist_id=anilist_id,
+            ep_number=matched_ep["ep_number"],
+            play_url=play_url,
+            anime_title=anime_title,
+            duration=duration,
+            db_session=db_session
         )
-        
-        # Clean up conversation state
+        try:
+            await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+        except Exception:
+            pass
         await state.clear()
         
     except Exception:
@@ -215,10 +161,85 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
         await status_msg.edit_text("❌ حدث خطأ أثناء معالجة التحميل. يرجى المحاولة مجدداً.")
         await state.clear()
 
+
+async def prompt_quality_selection(
+    bot,
+    chat_id: int,
+    anilist_id: int,
+    ep_number: str,
+    play_url: str,
+    anime_title: str,
+    duration: Optional[str],
+    db_session: AsyncSession
+):
+    # Check download cache
+    dl_stmt = select(DownloadCache).where(DownloadCache.play_url == play_url)
+    dl_res = await db_session.execute(dl_stmt)
+    cached_dl = dl_res.scalar_one_or_none()
+    
+    qualities = {}
+    db_cache_id = None
+    
+    if cached_dl and (datetime.now(timezone.utc) - cached_dl.created_at) < timedelta(hours=CACHE_EXPIRATION_HOURS):
+        qualities = cached_dl.qualities
+        db_cache_id = cached_dl.id
+    else:
+        status_msg = await bot.send_message(chat_id, "🔄 جاري استخراج روابط التحميل المباشرة للحلقة...")
+        scraped_links = await get_download_links_scraper(play_url)
+        
+        if not scraped_links:
+            await bot.edit_message_text("❌ فشل في استخراج روابط التحميل لهذه الحلقة. يرجى المحاولة لاحقاً.", chat_id=chat_id, message_id=status_msg.message_id)
+            return
+            
+        qualities = scraped_links
+        if cached_dl:
+            cached_dl.qualities = qualities
+            cached_dl.duration = duration
+            cached_dl.created_at = datetime.now(timezone.utc)
+            db_session.add(cached_dl)
+            await db_session.commit()
+            db_cache_id = cached_dl.id
+        else:
+            new_dl = DownloadCache(
+                play_url=play_url,
+                qualities=qualities,
+                duration=duration
+            )
+            db_session.add(new_dl)
+            await db_session.commit()
+            db_cache_id = new_dl.id
+        try:
+            await bot.delete_message(chat_id, status_msg.message_id)
+        except Exception:
+            pass
+            
+    keyboard_buttons = [
+        [InlineKeyboardButton(text="⭐ تلقائي (حجم ذكي <= 2 جيجابايت)", callback_data=f"dl:auto:{db_cache_id}")]
+    ]
+    
+    quality_row = []
+    for q in ["1080p", "720p", "480p", "360p"]:
+        if q in qualities:
+            quality_row.append(InlineKeyboardButton(text=q, callback_data=f"dl:{q}:{db_cache_id}"))
+    if quality_row:
+        keyboard_buttons.append(quality_row)
+        
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
+    await bot.send_message(
+        chat_id,
+        f"🎬 **الأنمي**: {anime_title}\n"
+        f"🔢 **الحلقة**: {ep_number}\n\n"
+        f"اختر جودة التحميل المفضلة أدناه:",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+
+
 @router.callback_query(F.data.startswith("dl:"))
 async def handle_download_callback(callback: CallbackQuery, db_session: AsyncSession):
     """
-    Triggers download from selected quality or runs smart quality fallbacks.
+    Triggers download from selected quality or enqueues task in PersistentTaskQueue.
     """
     parts = callback.data.split(":")
     requested_quality = parts[1]
@@ -230,7 +251,6 @@ async def handle_download_callback(callback: CallbackQuery, db_session: AsyncSes
     dl_cache = res.scalar_one_or_none()
     
     if not dl_cache:
-        logger.warning(f"لم يتم العثور على روابط تحميل في الكاش أو انتهت صلاحيتها (معرف الكاش: {cache_id})")
         await callback.answer("❌ انتهت صلاحية رابط تحميل الحلقة. يرجى إعادة البحث.", show_alert=True)
         return
         
@@ -242,13 +262,127 @@ async def handle_download_callback(callback: CallbackQuery, db_session: AsyncSes
     except Exception:
         pass
         
-    logger.info(f"تم اختيار الجودة: '{requested_quality}' (معرف الكاش: {cache_id}، المستخدم: {callback.from_user.id})")
-    await process_and_send_video(
+    # Resolve anilist_id and anime_title/ep_num
+    play_url = dl_cache.play_url
+    anilist_id = None
+    anime_title = "أنمي"
+    episode_num = ""
+    
+    stmt_ep = select(EpisodeCache).where(EpisodeCache.play_url == play_url)
+    res_ep = await db_session.execute(stmt_ep)
+    ep_entry = res_ep.scalars().first()
+    if ep_entry:
+        anilist_id = ep_entry.anilist_id
+        episode_num = ep_entry.ep_number
+        stmt_search = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
+        res_search = await db_session.execute(stmt_search)
+        search_cache = res_search.scalars().first()
+        if search_cache:
+            anime_title = search_cache.title_english or search_cache.title_romaji
+            if anime_title.startswith("WITANIME:"):
+                anime_title = search_cache.title_english
+                
+    if not anilist_id:
+        anilist_id = dl_cache.id
+
+    from app.services.downloader import select_best_quality
+    # Optimization: Zero-second delivery if already cached as Telegram file ID
+    selected_q, download_url, size = await select_best_quality(dl_cache.qualities, requested_quality)
+    if not download_url.startswith("http"):
+        from app.services.worker import execute_queued_task
+        from app.database.connection import AsyncSessionLocal
+        await execute_queued_task(
+            task_id=0,
+            user_id=callback.from_user.id,
+            chat_id=callback.message.chat.id,
+            status_msg_id=None,
+            anilist_id=anilist_id,
+            anime_title=anime_title,
+            episode_num=episode_num,
+            requested_quality=requested_quality,
+            bot=callback.bot,
+            db_session_factory=AsyncSessionLocal
+        )
+        return
+
+    # Create status message
+    status_msg = await callback.message.answer(
+        f"⏳ **تم إضافة طلبك لقائمة الانتظار:**\n"
+        f"🎬 الأنمي: {anime_title}\n"
+        f"🔢 الحلقة: {episode_num}\n"
+        f"⚙️ الجودة: {requested_quality}\n\n"
+        f"🔄 جاري بدء المعالجة والتحميل، يرجى الانتظار..."
+    )
+
+    # Insert into PersistentTaskQueue
+    from app.database.models import PersistentTaskQueue
+    new_task = PersistentTaskQueue(
+        user_id=callback.from_user.id,
+        chat_id=callback.message.chat.id,
+        message_id=status_msg.message_id,
+        anilist_id=anilist_id,
+        anime_title=anime_title,
+        episode_num=episode_num,
+        quality=requested_quality,
+        status="pending"
+    )
+    db_session.add(new_task)
+    await db_session.commit()
+    logger.info(f"Enqueued download task {new_task.id} for User {callback.from_user.id}")
+
+
+@router.callback_query(F.data.startswith("nav_ep:"))
+async def handle_nav_ep(callback: CallbackQuery, db_session: AsyncSession):
+    parts = callback.data.split(":")
+    anilist_id = int(parts[1])
+    ep_num = parts[2]
+    
+    await callback.answer()
+    
+    # Retrieve play_url
+    stmt = select(EpisodeCache).where(
+        (EpisodeCache.anilist_id == anilist_id) & (EpisodeCache.ep_number == ep_num)
+    )
+    res = await db_session.execute(stmt)
+    ep_entry = res.scalar_one_or_none()
+    if not ep_entry:
+        await callback.message.answer("❌ عذراً، لم يتم العثور على الحلقة المطلوبة في الكاش.")
+        return
+        
+    stmt_s = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
+    res_s = await db_session.execute(stmt_s)
+    cache_entry = res_s.scalars().first()
+    title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
+    if title.startswith("WITANIME:"):
+        title = cache_entry.title_english
+        
+    duration = cache_entry.duration if cache_entry else None
+    
+    await prompt_quality_selection(
         bot=callback.bot,
-        message=callback.message,
-        qualities=dl_cache.qualities,
-        requested_quality=requested_quality,
-        db_session=db_session,
-        play_url=dl_cache.play_url
+        chat_id=callback.message.chat.id,
+        anilist_id=anilist_id,
+        ep_number=ep_num,
+        play_url=ep_entry.play_url,
+        anime_title=title,
+        duration=duration,
+        db_session=db_session
+    )
+
+
+@router.callback_query(F.data.startswith("nav_grid:"))
+async def handle_nav_grid(callback: CallbackQuery, db_session: AsyncSession):
+    parts = callback.data.split(":")
+    anilist_id = int(parts[1])
+    
+    await callback.answer()
+    
+    from app.handlers.search import render_episode_keyboard
+    await render_episode_keyboard(
+        bot=callback.bot,
+        chat_id=callback.message.chat.id,
+        message_id=None,
+        anilist_id=anilist_id,
+        db_session=db_session
     )
 

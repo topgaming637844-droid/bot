@@ -65,3 +65,38 @@ class BotAdmin(Base):
     added_by = Column(BigInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+
+class User(Base):
+    """Tracks all interacting user accounts for tracking system metrics and global broadcasting."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    username = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AnimeTopicCache(Base):
+    """Maps series to their specific forum topic in the library group."""
+    __tablename__ = "anime_topic_cache"
+
+    anilist_id = Column(BigInteger, primary_key=True, index=True)
+    topic_id = Column(Integer, nullable=False)
+
+
+class PersistentTaskQueue(Base):
+    """Tracks ongoing background jobs securely across server restarts."""
+    __tablename__ = "persistent_task_queue"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    message_id = Column(Integer, nullable=True)  # Status message to edit
+    anilist_id = Column(BigInteger, nullable=False)
+    anime_title = Column(String(500), nullable=False)
+    episode_num = Column(String(50), nullable=False)
+    quality = Column(String(50), nullable=False)
+    status = Column(String(50), default="pending", nullable=False)  # pending, processing, completed, failed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+

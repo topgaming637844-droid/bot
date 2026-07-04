@@ -14,6 +14,29 @@ from app.utils.user_agents import get_random_user_agent
 from app.services.anilist import get_connector
 from app.utils.logging_config import logger
 
+class AdaptiveSemaphore:
+    def __init__(self, initial_limit: int):
+        self.limit = initial_limit
+        self.current_concurrency = 0
+        self.cond = asyncio.Condition()
+
+    async def __aenter__(self):
+        async with self.cond:
+            while self.current_concurrency >= self.limit:
+                await self.cond.wait()
+            self.current_concurrency += 1
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        async with self.cond:
+            self.current_concurrency -= 1
+            self.cond.notify_all()
+
+    async def adjust_limit(self, new_limit: int):
+        async with self.cond:
+            self.limit = max(2, min(20, new_limit))
+            self.cond.notify_all()
+
+
 MAX_TELEGRAM_STANDARD_SIZE = 50 * 1024 * 1024       # 50 MB
 MAX_TELEGRAM_LOCAL_SIZE = 2 * 1024 * 1024 * 1024     # 2 GB
 
@@ -157,24 +180,44 @@ async def download_segment(
     session: aiohttp.ClientSession,
     headers: dict,
     is_png_wrapped: bool,
-    semaphore: asyncio.Semaphore
+    semaphore: AdaptiveSemaphore
 ) -> Tuple[int, Optional[bytes]]:
     """Downloads a single segment chunk, checking and stripping fake PNG signature with retry mechanism."""
     max_retries = 5
     seg_timeout = aiohttp.ClientTimeout(total=120, sock_read=60)
+    
+    import random
+    headers_copy = headers.copy()
+    headers_copy["User-Agent"] = random.choice(config.USER_AGENTS)
+    langs = [
+        "ar,en-US;q=0.9,en;q=0.8",
+        "en-US,en;q=0.9",
+        "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
+        "en-GB,en;q=0.9,en-US;q=0.8"
+    ]
+    headers_copy["Accept-Language"] = random.choice(langs)
+
     async with semaphore:
         for attempt in range(max_retries):
             try:
-                async with session.get(seg_url, headers=headers, ssl=False, timeout=seg_timeout) as resp:
+                async with session.get(seg_url, headers=headers_copy, ssl=False, timeout=seg_timeout) as resp:
                     if resp.status == 200:
                         seg_data = await resp.read()
                         if is_png_wrapped and seg_data.startswith(b"\x89PNG"):
                             seg_data = seg_data[252:]
+                        # Gradually scale up pool limit on success
+                        await semaphore.adjust_limit(semaphore.limit + 1)
                         return idx, seg_data
+                    elif resp.status == 502:
+                        # Scale down on 502 Bad Gateway
+                        await semaphore.adjust_limit(semaphore.limit // 2)
+                        logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} 502 error, throttling concurrency limit to {semaphore.limit}")
                     else:
-                        logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} download returned status {resp.status}")
+                        logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} returned status {resp.status}")
             except Exception as e:
-                logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} download error: {e}")
+                # Scale down on network exceptions / timeouts
+                await semaphore.adjust_limit(semaphore.limit // 2)
+                logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} download error: {e}, throttling concurrency limit to {semaphore.limit}")
             if attempt < max_retries - 1:
                 backoff = min(2 * (2 ** attempt), 16)
                 await asyncio.sleep(backoff)
@@ -242,7 +285,7 @@ async def download_hls(
             estimated_total_size = total_segments * actual_seg_size
             
             # Spawn parallel download tasks
-            semaphore = asyncio.Semaphore(20)
+            semaphore = AdaptiveSemaphore(20)
             tasks = [
                 download_segment(idx, seg_url, session, headers, is_png_wrapped, semaphore)
                 for idx, seg_url in enumerate(segment_urls)
@@ -576,12 +619,50 @@ async def process_and_send_video(
                 os.unlink(temp_file_path)
             return
 
+        # FFmpeg Low-RAM Video Compression Safety Valve
+        actual_size = os.path.getsize(temp_file_path)
+        if actual_size > 1.95 * 1024 * 1024 * 1024:
+            await status_msg.edit_text("⚙️ حجم الملف يتجاوز 2 جيجابايت. جاري بدء ضغط الفيديو لتقليل الحجم...")
+            compressed_filename = f"compressed_{filename}"
+            compressed_file_path = config.DOWNLOAD_DIR / compressed_filename
+            
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "ffmpeg",
+                    "-y",
+                    "-i", str(temp_file_path),
+                    "-vcodec", "libx264",
+                    "-crf", "28",
+                    "-preset", "ultrafast",
+                    "-threads", "1",
+                    "-acodec", "copy",
+                    str(compressed_file_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                
+                if process.returncode == 0 and compressed_file_path.exists():
+                    logger.info(f"Video compressed from {actual_size / (1024*1024):.1f} MB to {os.path.getsize(compressed_file_path) / (1024*1024):.1f} MB")
+                    os.unlink(temp_file_path)
+                    temp_file_path = compressed_file_path
+                    size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
+                else:
+                    raise Exception("FFmpeg compression failed")
+            except Exception as compression_err:
+                logger.warning(f"Error during video compression: {compression_err}. Falling back to URL delivery.")
+                if compressed_file_path.exists():
+                    try: os.unlink(compressed_file_path)
+                    except Exception: pass
+                raise Exception(f"فشل ضغط الملف الذي يتجاوز 2 جيجابايت: {compression_err}")
+
         await status_msg.edit_text("📤 جاري رفع الفيديو إلى تلغرام...")
         video_file = FSInputFile(str(temp_file_path))
         
         # Resolve anime title and episode number
         anime_title = "أنمي"
         ep_num = ""
+        anilist_id = None
         
         from sqlalchemy.ext.asyncio import AsyncSession
         if play_url and db_session:
@@ -593,6 +674,7 @@ async def process_and_send_video(
                 ep_cache = res.scalars().first()
                 if ep_cache:
                     ep_num = ep_cache.ep_number
+                    anilist_id = ep_cache.anilist_id
                     stmt_search = select(SearchCache).where(SearchCache.anilist_id == ep_cache.anilist_id)
                     res_search = await db_session.execute(stmt_search)
                     search_cache = res_search.scalars().first()
@@ -660,12 +742,55 @@ async def process_and_send_video(
         if thumb_path.exists():
             thumb_input = FSInputFile(str(thumb_path))
             
+        # Resolve next/prev buttons for navigation under video
+        prev_ep, next_ep = None, None
+        inline_keyboard = []
+        if db_session and anilist_id:
+            try:
+                from app.database.models import EpisodeCache
+                # Find all episodes for this anilist_id
+                stmt_all = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
+                res_all = await db_session.execute(stmt_all)
+                all_eps = res_all.scalars().all()
+                
+                # Custom numerical sort
+                def parse_ep(e):
+                    try: return float(e.ep_number)
+                    except ValueError: return 999999.0
+                all_eps.sort(key=parse_ep)
+                
+                # Find index of current episode
+                curr_idx = -1
+                for i, ep in enumerate(all_eps):
+                    if ep.ep_number == ep_num:
+                        curr_idx = i
+                        break
+                if curr_idx > 0:
+                    prev_ep = all_eps[curr_idx - 1].ep_number
+                if curr_idx >= 0 and curr_idx < len(all_eps) - 1:
+                    next_ep = all_eps[curr_idx + 1].ep_number
+            except Exception:
+                logger.exception("Error calculating prev/next navigation episodes")
+
+        nav_row = []
+        if prev_ep:
+            nav_row.append(InlineKeyboardButton(text="◀️ الحلقة السابقة", callback_data=f"nav_ep:{anilist_id}:{prev_ep}"))
+        if anilist_id:
+            nav_row.append(InlineKeyboardButton(text="🔢 حلقة أخرى", callback_data=f"nav_grid:{anilist_id}"))
+        if next_ep:
+            nav_row.append(InlineKeyboardButton(text="▶️ الحلقة التالية", callback_data=f"nav_ep:{anilist_id}:{next_ep}"))
+        if nav_row:
+            inline_keyboard.append(nav_row)
+
+        markup = InlineKeyboardMarkup(inline_keyboard=inline_keyboard) if inline_keyboard else None
+
         await message.answer_video(
             video=video_file,
             thumbnail=thumb_input,
             duration=duration_seconds,
             caption=caption,
             supports_streaming=True,
+            reply_markup=markup,
             parse_mode="Markdown"
         )
         await status_msg.delete()
