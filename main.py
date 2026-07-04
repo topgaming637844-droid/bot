@@ -44,21 +44,19 @@ async def main():
 
     # 3. Setup Custom Bot Session (Local Bot API server support for files up to 2GB)
     #    Extended timeout (600s) prevents upload crashes for large ~1GB videos
-    import aiohttp as _aiohttp
-    bot_timeout = _aiohttp.ClientTimeout(total=600, connect=30, sock_read=600)
     session = None
     if config.TELEGRAM_API_SERVER:
         try:
             logger.info(f"Connecting using custom local Bot API server: {config.TELEGRAM_API_SERVER}")
             api_server = TelegramAPIServer.from_base(config.TELEGRAM_API_SERVER)
-            session = AiohttpSession(api=api_server, timeout=bot_timeout)
+            session = AiohttpSession(api=api_server, timeout=600)
         except Exception:
             logger.exception("Error creating custom Bot API session. Falling back to default.")
             session = None
     
     # Even without a local server, use the extended timeout to avoid upload timeouts
     if session is None:
-        session = AiohttpSession(timeout=bot_timeout)
+        session = AiohttpSession(timeout=600)
 
     # 4. Initialize Bot and Dispatcher instances
     bot = Bot(
