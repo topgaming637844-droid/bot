@@ -234,9 +234,14 @@ async def webapp_episodes(anilist_id: int):
         episodes.sort(key=lambda x: parse_ep_num(x.ep_number))
         
         # Load HTML template file
-        template_path = os.path.join(os.path.dirname(__file__), "app", "templates", "episodes.html")
+        # عدل مسار الملف عشان يشاور صح على templates
+        template_path = os.path.join(os.path.dirname(__file__), "templates", "episodes.html")
+
         with open(template_path, "r", encoding="utf-8") as f:
-            content = f.read()
+            html_content = f.read()
+
+        # هنا بقى التريكة، لازم نبعت الـ content للـ HTMLResponse
+        return HTMLResponse(content=html_content, status_code=200)
             
         # Perform dynamic template replacement
         buttons_html = ""
