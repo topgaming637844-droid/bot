@@ -109,19 +109,19 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
     try:
         bot = message.bot
         file_info = await bot.get_file(photo.file_id)
+        file_path = file_info.file_path
         
-        # Clean local Bot API server absolute path bug
-        cleaned_path = file_info.file_path
-        prefix = f"bot{bot.token}/"
-        if prefix in cleaned_path:
-            cleaned_path = cleaned_path.split(prefix, 1)[1]
-        elif "/var/lib/telegram-bot-api/" in cleaned_path:
-            import re
-            match = re.search(r'bot[^/]+/(.+)$', cleaned_path)
-            if match:
-                cleaned_path = match.group(1)
-                
-        await bot.download_file(cleaned_path, destination=str(thumb_path))
+        # Download from official Telegram cloud API directly via aiohttp
+        download_url = f"https://api.telegram.org/file/bot{bot.token}/{file_path}"
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(download_url, ssl=False, timeout=30) as resp:
+                if resp.status == 200:
+                    image_bytes = await resp.read()
+                    with open(thumb_path, "wb") as f:
+                        f.write(image_bytes)
+                else:
+                    raise Exception(f"Official Telegram API returned status {resp.status} for file download")
         
         # Clean up custom_thumb_id.txt if it exists to avoid conflicts
         if thumb_id_path.exists():

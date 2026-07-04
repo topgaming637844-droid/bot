@@ -55,14 +55,14 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
         status_msg = await message.answer("🔍 جاري تهيئة البحث باستخدام AniList...")
         try:
             anilist_results = await search_anilist(query)
-            await status_msg.delete()
+            await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
             
             if not anilist_results:
                 logger.info(f"AniList لم ترجع نتائج للبحث: '{query}'. جاري الانتقال للبحث في WitAnime...")
                 # Native Fallback search to WitAnime
                 status_msg = await message.answer("🔍 لم يتم العثور على نتائج في AniList. جاري البحث في WitAnime...")
                 scraper_results = await search_anime_scraper(query)
-                await status_msg.delete()
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
                 
                 if not scraper_results:
                     logger.info(f"WitAnime لم ترجع نتائج للبحث: '{query}'")
@@ -108,7 +108,8 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
         except Exception as e:
             logger.exception("خطأ أثناء معالجة البحث وتطبيع الاستعلام")
             try:
-                await status_msg.delete()
+                if 'status_msg' in locals():
+                    await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
             except Exception:
                 pass
             import html
@@ -248,7 +249,7 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
     else:
         max_episode = len(cached_episodes)
         
-    await status_msg.delete()
+    await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=status_msg.message_id)
     
     # Store details in FSM context
     await state.update_data(

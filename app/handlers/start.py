@@ -134,7 +134,7 @@ async def handle_check_subscription(callback: CallbackQuery):
     if not config.CHANNEL_USERNAME:
         await callback.answer("تم التحقق بنجاح! البوت مفعل للجميع.")
         try:
-            await callback.message.delete()
+            await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
         except Exception:
             pass
         await send_welcome_panel(callback.message)
@@ -145,7 +145,7 @@ async def handle_check_subscription(callback: CallbackQuery):
         if member.status in ("member", "administrator", "creator"):
             await callback.answer("✅ تم التحقق بنجاح! شكراً لاشتراكك.", show_alert=True)
             try:
-                await callback.message.delete()
+                await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
             except Exception:
                 pass
             await send_welcome_panel(callback.message)
@@ -156,7 +156,7 @@ async def handle_check_subscription(callback: CallbackQuery):
         logger.warning(f"Error checking sub in callback for user {user_id}")
         await callback.answer("✅ تم التفعيل بنجاح!")
         try:
-            await callback.message.delete()
+            await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
         except Exception:
             pass
         await send_welcome_panel(callback.message)

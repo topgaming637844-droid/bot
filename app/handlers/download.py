@@ -198,7 +198,7 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
             
         markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
         
-        await status_msg.delete()
+        await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
         await message.answer(
             f"🎬 **الأنمي**: {anime_title}\n"
             f"🔢 **الحلقة**: {matched_ep['ep_number']}\n\n"
@@ -238,7 +238,7 @@ async def handle_download_callback(callback: CallbackQuery, db_session: AsyncSes
     
     # Delete original menu message to avoid spamming the UI
     try:
-        await callback.message.delete()
+        await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
     except Exception:
         pass
         
