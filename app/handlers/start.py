@@ -17,11 +17,11 @@ SUGGESTIONS = [
     "Steins;Gate", "Monster", "Code Geass", "Haikyuu!!", "One Punch Man"
 ]
 
-def get_welcome_markup() -> InlineKeyboardMarkup:
-    # ROW 1: [ 🔍 بحث ] | [ 🎲 إقترح لي ]
-    # ROW 2: [ ⭐ قائمة المفضلة ]
-    # ROW 3: [ 🛠️ الدعم الفني ] | [ ❓ مساعدة ]
-    # ROW 4: [ 📢 للإعلانات والتمويل ]
+async def send_welcome_panel(message: Message, db_session: AsyncSession):
+    from app.utils.auth import is_admin
+    user_id = message.from_user.id
+    is_user_admin = await is_admin(user_id, db_session)
+    
     keyboard = [
         [
             InlineKeyboardButton(text="🔍 بحث", callback_data="menu_search"),
@@ -38,16 +38,29 @@ def get_welcome_markup() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📢 للإعلانات والتمويل", callback_data="menu_ads")
         ]
     ]
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-async def send_welcome_panel(message: Message):
+    
     welcome_text = (
         "✨ <b>أهلاً بك في بوت أنمي وانمي | Anime & Anmie</b> 🎬\n\n"
         "مرحباً بك في وجهتك الأولى لمشاهدة وتحميل الأنمي بجودة عالية وسرعة فائقة! 🚀\n"
         "البوت يدعم البحث الذكي (بالعربية والإنجليزية وأسماء الشخصيات) وتنزيل الحلقات مباشرة داخل تلغرام بأحجام تصل إلى 2 جيجابايت.\n\n"
-        "👇 <b>اختر من القائمة أدناه لبدء المغامرة:</b>"
     )
-    await message.answer(welcome_text, reply_markup=get_welcome_markup(), parse_mode="HTML")
+    
+    if is_user_admin:
+        keyboard.append([InlineKeyboardButton(text="🛠️ لوحة تحكم الإدارة (Admin)", callback_data="admin_home")])
+        welcome_text += (
+            "🛠️ <b>قسم الإدارة والمسؤولين:</b>\n"
+            "مرحباً بك كمسؤول في البوت. إليك الأوامر المتاحة لك:\n"
+            "• <code>/admin</code> - فتح لوحة التحكم الشاملة.\n"
+            "• <code>/addadmin &lt;ID&gt;</code> - إضافة مسؤول جديد.\n"
+            "• <code>/deladmin &lt;ID&gt;</code> - إزالة مسؤول.\n"
+            "• <code>/post_episode &lt;anime&gt; | &lt;episode&gt;</code> - بث ونشر حلقة جديدة في القناة.\n"
+            "• <code>/setthumb &lt;URL&gt;</code> - تعيين خلفية فيديو افتراضية من رابط.\n\n"
+        )
+        
+    welcome_text += "👇 <b>اختر من القائمة أدناه لبدء المغامرة:</b>"
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await message.answer(welcome_text, reply_markup=markup, parse_mode="HTML")
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContext):
@@ -128,23 +141,30 @@ async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContex
                 await message.answer("❌ حدث خطأ أثناء معالجة رابط التحميل المباشر.")
                 return
 
-    await send_welcome_panel(message)
+    await send_welcome_panel(message, db_session)
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Handles the /help command."""
     help_text = (
-        "ℹ️ <b>تعليمات استخدام البوت</b>:\n\n"
-        "1. <b>البحث</b>: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
-        "2. <b>الاختيار</b>: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
-        "3. <b>تحديد الحلقة</b>: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
-        "4. <b>الجودة</b>: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
-        "⚙️ <i>ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.</i>"
+        "ℹ️ <b>دليل وتعليمات استخدام البوت كعضو:</b>\n\n"
+        "🤖 <b>الأوامر المتاحة لك:</b>\n"
+        "• <code>/start</code> - لتشغيل البوت وفتح لوحة التحكم الترحيبية.\n"
+        "• <code>/help</code> - لعرض دليل الاستخدام والتعليمات المفصلة.\n\n"
+        "📖 <b>خطوات استخدام البوت والتحميل:</b>\n"
+        "1️⃣ <b>البحث</b>: أرسل اسم الأنمي مباشرة في الدردشة (باللغة العربية أو الإنجليزية أو اسم الشخصية). مثال: <code>Demon Slayer</code>.\n"
+        "2️⃣ <b>اختيار الأنمي</b>: ستظهر لك قائمة بالأنميات المتطابقة، اضغط على زر الأنمي المطلوب.\n"
+        "3️⃣ <b>اختيار الحلقة</b>: سيقوم البوت بتقسيم الحلقات تلقائياً لمجموعات، اضغط على المجموعة ثم اختر رقم الحلقة المطلوب فوراً من لوحة الأزرار.\n"
+        "4️⃣ <b>اختيار جودة التحميل</b>: اختر الجودة المناسبة لك (1080p، 720p، 480p, 360p) أو اختر <b>'تلقائي'</b> ليقوم البوت بضغط وتحديد جودة الفيديو تلقائياً لتناسب السيرفر.\n\n"
+        "💡 <b>ميزات ذكية إضافية:</b>\n"
+        "• <b>قائمة المفضلة</b>: يمكنك حفظ الأنميات التي تتابعها بالضغط على '⭐ إضافة إلى المفضلة' للوصول إليها لاحقاً بضغطة زر.\n"
+        "• <b>أزرار التنقل السريعة</b>: عند استلام الفيديو، ستجد أزرار تنقل تحت الفيديو مباشرة (`◀️ الحلقة السابقة` | `🔢 حلقة أخرى` | `▶️ الحلقة التالية`) لتشغيل الحلقة التالية بلمسة واحدة دون البحث مجدداً.\n"
+        "• <b>سرعة ودعم فائق</b>: يدعم البوت تنزيل الحلقات والأفلام ذات الأحجام الضخمة حتى 2 جيجابايت لتلبي كافة الاحتياجات."
     )
     await message.answer(help_text, parse_mode="HTML")
 
 @router.callback_query(F.data == "check_sub")
-async def handle_check_subscription(callback: CallbackQuery):
+async def handle_check_subscription(callback: CallbackQuery, db_session: AsyncSession):
     bot = callback.bot
     user_id = callback.from_user.id
     
@@ -154,7 +174,7 @@ async def handle_check_subscription(callback: CallbackQuery):
             await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
         except Exception:
             pass
-        await send_welcome_panel(callback.message)
+        await send_welcome_panel(callback.message, db_session)
         return
         
     try:
@@ -165,7 +185,7 @@ async def handle_check_subscription(callback: CallbackQuery):
                 await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
             except Exception:
                 pass
-            await send_welcome_panel(callback.message)
+            await send_welcome_panel(callback.message, db_session)
         else:
             await callback.answer("❌ لم تشترك في القناة بعد! يرجى الاشتراك أولاً.", show_alert=True)
     except Exception:
@@ -176,7 +196,7 @@ async def handle_check_subscription(callback: CallbackQuery):
             await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
         except Exception:
             pass
-        await send_welcome_panel(callback.message)
+        await send_welcome_panel(callback.message, db_session)
 
 @router.callback_query(F.data == "menu_search")
 async def handle_menu_search(callback: CallbackQuery):
@@ -250,12 +270,19 @@ async def handle_menu_support(callback: CallbackQuery):
 async def handle_menu_help(callback: CallbackQuery):
     await callback.answer()
     help_text = (
-        "ℹ️ <b>تعليمات استخدام البوت</b>:\n\n"
-        "1. <b>البحث</b>: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
-        "2. <b>الاختيار</b>: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
-        "3. <b>تحديد الحلقة</b>: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
-        "4. <b>الجودة</b>: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
-        "⚙️ <i>ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.</i>"
+        "ℹ️ <b>دليل وتعليمات استخدام البوت كعضو:</b>\n\n"
+        "🤖 <b>الأوامر المتاحة لك:</b>\n"
+        "• <code>/start</code> - لتشغيل البوت وفتح لوحة التحكم الترحيبية.\n"
+        "• <code>/help</code> - لعرض دليل الاستخدام والتعليمات المفصلة.\n\n"
+        "📖 <b>خطوات استخدام البوت والتحميل:</b>\n"
+        "1️⃣ <b>البحث</b>: أرسل اسم الأنمي مباشرة في الدردشة (باللغة العربية أو الإنجليزية أو اسم الشخصية). مثال: <code>Demon Slayer</code>.\n"
+        "2️⃣ <b>اختيار الأنمي</b>: ستظهر لك قائمة بالأنميات المتطابقة، اضغط على زر الأنمي المطلوب.\n"
+        "3️⃣ <b>اختيار الحلقة</b>: سيقوم البوت بتقسيم الحلقات تلقائياً لمجموعات، اضغط على المجموعة ثم اختر رقم الحلقة المطلوب فوراً من لوحة الأزرار.\n"
+        "4️⃣ <b>اختيار جودة التحميل</b>: اختر الجودة المناسبة لك (1080p، 720p، 480p, 360p) أو اختر <b>'تلقائي'</b> ليقوم البوت بضغط وتحديد جودة الفيديو تلقائياً لتناسب السيرفر.\n\n"
+        "💡 <b>ميزات ذكية إضافية:</b>\n"
+        "• <b>قائمة المفضلة</b>: يمكنك حفظ الأنميات التي تتابعها بالضغط على '⭐ إضافة إلى المفضلة' للوصول إليها لاحقاً بضغطة زر.\n"
+        "• <b>أزرار التنقل السريعة</b>: عند استلام الفيديو، ستجد أزرار تنقل تحت الفيديو مباشرة (`◀️ الحلقة السابقة` | `🔢 حلقة أخرى` | `▶️ الحلقة التالية`) لتشغيل الحلقة التالية بلمسة واحدة دون البحث مجدداً.\n"
+        "• <b>سرعة ودعم فائق</b>: يدعم البوت تنزيل الحلقات والأفلام ذات الأحجام الضخمة حتى 2 جيجابايت لتلبي كافة الاحتياجات."
     )
     await callback.message.answer(help_text, parse_mode="HTML")
 
