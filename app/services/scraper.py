@@ -113,9 +113,26 @@ def unpack_dean_edwards(packed_text: str) -> str:
         logger.exception("Error in process: failed to unpack Dean Edwards packed JS")
         return ""
 
+def get_browser_headers(referer: str = "https://witanime.pics/") -> dict:
+    ua = get_random_user_agent()
+    return {
+        "User-Agent": ua,
+        "Referer": referer,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin" if "witanime" in referer else "cross-site",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0"
+    }
+
 async def get_html(url: str, session: aiohttp.ClientSession) -> str:
     """Fetches HTML content with custom headers and optional proxy."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
+    headers = get_browser_headers()
     proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
     logger.info(f"Scraping page: {url}{proxy_str}")
     
@@ -135,7 +152,7 @@ async def get_html(url: str, session: aiohttp.ClientSession) -> str:
 
 async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Optional[Dict[str, str]]:
     """Resolves parent anime details page from an episode watch page URL."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
+    headers = get_browser_headers(ep_url)
     try:
         async with session.get(ep_url, headers=headers, ssl=False, timeout=10) as resp:
             if resp.status == 200:
@@ -287,7 +304,7 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
                 url = f"https://witanime.pics/anime/{anime_slug}/page/{page_num}/"
                 
             try:
-                headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
+                headers = get_browser_headers(url)
                 async with session.get(url, headers=headers, timeout=15) as response:
                     if response.status != 200:
                         logger.info(f"توقف جلب الصفحات عند الصفحة {page_num} بسبب رمز الحالة: {response.status}")
@@ -443,7 +460,7 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
             logger.exception(f"Error resolving yonaplay: {e}")
         return None
 
-    headers = {"User-Agent": get_random_user_agent(), "Referer": "https://witanime.pics/"}
+    headers = get_browser_headers(embed_url)
     
     # Try multiple known mirror player domains if it's hglink.to / hgcloud.to or Streamwish
     target_urls = [embed_url]
