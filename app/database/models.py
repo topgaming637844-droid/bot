@@ -14,6 +14,7 @@ class SearchCache(Base):
     title_romaji = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
     image_url = Column(String(1000), nullable=True)
+    duration = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -37,6 +38,7 @@ class DownloadCache(Base):
     id = Column(Integer, primary_key=True)
     play_url = Column(String(1000), unique=True, nullable=False, index=True)
     qualities = Column(JSON, nullable=False)  # Format: {"1080p": "url1", "720p": "url2", ...}
+    duration = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class UserFavorites(Base):

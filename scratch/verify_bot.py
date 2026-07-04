@@ -158,8 +158,12 @@ async def test_multipart_download(direct_url: str):
 async def test_scraper():
     print("\n--- TESTING PAGINATED EPISODES SCRAPER ---")
     slug = "one-piece"
-    episodes = await get_episodes_scraper(slug)
+    res_dict = await get_episodes_scraper(slug)
+    episodes = res_dict["episodes"]
     print(f"Successfully scraped and aggregated {len(episodes)} episodes.")
+    print(f"Scraped Poster URL: {res_dict.get('poster_url')}")
+    print(f"Scraped Description: {res_dict.get('description')}")
+    print(f"Scraped Duration: {res_dict.get('duration')}")
     if episodes:
         print(f"First episode play URL: {episodes[0]['play_url']}")
         print(f"Last episode play URL: {episodes[-1]['play_url']}")

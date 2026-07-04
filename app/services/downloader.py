@@ -431,7 +431,8 @@ async def download_file(
     # Use multipart parallel downloader for direct files to bypass speed caps
     if total_size > 5 * 1024 * 1024:
         logger.info(f"Using multipart downloader for direct URL: {url}")
-        success = await download_multipart(url, target_path, status_message, total_size, quality)
+        num_parts = 4 if ("mp4upload" in url or "yourupload" in url) else 16
+        success = await download_multipart(url, target_path, status_message, total_size, quality, num_parts=num_parts)
         if success:
             return True
         logger.warning("Multipart download failed or not supported. Falling back to single-connection download.")
@@ -490,6 +491,24 @@ async def download_file(
     except Exception:
         logger.exception(f"Error in process during direct file download from {url}")
         return False
+
+def parse_duration_to_seconds(dur_str: str) -> int:
+    import re
+    if not dur_str:
+        return 24 * 60
+    match = re.search(r'(\d+)', dur_str)
+    if match:
+        mins = int(match.group(1))
+        if "ساعة" in dur_str and mins < 5:
+            return mins * 3600
+        return mins * 60
+    if "ساعة" in dur_str:
+        if "نصف" in dur_str:
+            return 90 * 60
+        if "ربع" in dur_str:
+            return 75 * 60
+        return 60 * 60
+    return 24 * 60
 
 async def process_and_send_video(
     bot: Bot,
@@ -595,6 +614,24 @@ async def process_and_send_video(
             except Exception:
                 pass
                 
+        # Resolve duration from cache
+        duration_str = None
+        if db_session and play_url:
+            try:
+                from sqlalchemy import select
+                from app.database.models import DownloadCache
+                stmt_dur = select(DownloadCache).where(DownloadCache.play_url == play_url)
+                res_dur = await db_session.execute(stmt_dur)
+                dl_cache = res_dur.scalar_one_or_none()
+                if dl_cache and dl_cache.duration:
+                    duration_str = dl_cache.duration
+            except Exception:
+                pass
+        if not duration_str:
+            duration_str = "24 دقيقة"
+            
+        duration_seconds = parse_duration_to_seconds(duration_str)
+
         # Get bot username
         bot_info = await bot.get_me()
         bot_username = f"@{bot_info.username}" if bot_info else ""
@@ -603,30 +640,23 @@ async def process_and_send_video(
         caption = (
             f"🎬 **{anime_title}**\n"
             f"🔢 **الحلقة:** `{ep_num}`\n"
+            f"⏱️ **المدة:** `{duration_str}`\n"
             f"⚙️ **الجودة:** `{quality}`\n"
             f"💾 **الحجم:** `{size_mb:.1f} ميجابايت`\n\n"
             f"🎥 **مشاهدة ممتعة!** ✨🍿\n\n"
             f"📢 **عبر البوت:** {bot_username}"
         )
         
-        # Check for custom thumbnail File ID or File Path
+        # Check for custom thumbnail File Path
         thumb_path = Path(__file__).parent.parent / "data" / "custom_thumb.jpg"
-        thumb_id_path = Path(__file__).parent.parent / "data" / "custom_thumb_id.txt"
-        
         thumb_input = None
-        if thumb_id_path.exists():
-            try:
-                with open(thumb_id_path, "r") as f:
-                    thumb_input = f.read().strip() or None
-            except Exception:
-                pass
-        
-        if not thumb_input and thumb_path.exists():
+        if thumb_path.exists():
             thumb_input = FSInputFile(str(thumb_path))
             
         await message.answer_video(
             video=video_file,
             thumbnail=thumb_input,
+            duration=duration_seconds,
             caption=caption,
             supports_streaming=True,
             parse_mode="Markdown"

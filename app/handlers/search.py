@@ -99,7 +99,8 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
                     title_english=anime["title_english"],
                     title_romaji=anime["title_romaji"],
                     description=anime["description"],
-                    image_url=anime["image_url"]
+                    image_url=anime["image_url"],
+                    duration=anime.get("duration")
                 )
                 db_session.add(new_cache)
             await db_session.commit()
@@ -110,7 +111,8 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
                 await status_msg.delete()
             except Exception:
                 pass
-            await message.answer(f"❌ حدث خطأ أثناء البحث: {e}")
+            import html
+            await message.answer(f"❌ حدث خطأ أثناء البحث: {html.escape(str(e))}")
             return
 
     # Build selection keyboard
@@ -182,12 +184,30 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
             from app.utils.match import get_best_slug_match
             anime_slug = get_best_slug_match(scraper_results, search_title)
 
+    scraped_data = None
     if anime_slug:
         # Scrape and cache episodes
-        scraped_eps = await get_episodes_scraper(anime_slug)
-        if not scraped_eps:
+        scraped_data = await get_episodes_scraper(anime_slug)
+        if not scraped_data or not scraped_data.get("episodes"):
             await status_msg.edit_text("❌ فشل في جلب قائمة الحلقات من سيرفر البث المساعد.")
             return
+            
+        episodes_list = scraped_data["episodes"]
+        
+        # If database cache lacks high-res details, update them
+        updated = False
+        if scraped_data.get("poster_url") and (not cache_entry.image_url or "default" in cache_entry.image_url):
+            cache_entry.image_url = scraped_data["poster_url"]
+            updated = True
+        if scraped_data.get("description") and (not cache_entry.description or "نتائج بحث" in cache_entry.description or cache_entry.description == "لا يوجد"):
+            cache_entry.description = scraped_data["description"]
+            updated = True
+        if scraped_data.get("duration"):
+            cache_entry.duration = scraped_data["duration"]
+            updated = True
+        if updated:
+            db_session.add(cache_entry)
+            await db_session.commit()
             
         # Delete old cache
         stmt_del = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
@@ -197,7 +217,7 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
             await db_session.delete(old_ep)
             
         # Add new episodes to cache
-        for ep in scraped_eps:
+        for ep in episodes_list:
             db_ep = EpisodeCache(
                 anilist_id=anilist_id,
                 ep_number=ep["ep_number"],
@@ -235,7 +255,8 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
         anilist_id=anilist_id,
         anime_title=title,
         title_romaji=cache_entry.title_romaji,
-        title_english=cache_entry.title_english
+        title_english=cache_entry.title_english,
+        duration=cache_entry.duration or (scraped_data.get("duration") if scraped_data else None)
     )
     
     # Transition to waiting for episode number
@@ -316,5 +337,6 @@ async def handle_add_favorite(callback: CallbackQuery, db_session: AsyncSession)
     except Exception as e:
         logger.exception("خطأ أثناء إضافة المفضلة")
         await db_session.rollback()
-        await callback.answer(f"❌ فشل الحفظ: {e}", show_alert=True)
+        import html
+        await callback.answer(f"❌ فشل الحفظ: {html.escape(str(e))}", show_alert=True)
 

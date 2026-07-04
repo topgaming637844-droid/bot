@@ -37,8 +37,10 @@ query ($search: String) {
       }
       description
       coverImage {
+        extraLarge
         large
       }
+      duration
       episodes
     }
   }
@@ -62,8 +64,10 @@ query ($search: String) {
           }
           description
           coverImage {
+            extraLarge
             large
           }
+          duration
           episodes
         }
       }
@@ -174,11 +178,18 @@ def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
         import re
         description = re.sub(r'<[^>]*>', '', description)
         
+    cover_image = media.get("coverImage", {})
+    image_url = cover_image.get("extraLarge") or cover_image.get("large")
+    
+    raw_duration = media.get("duration")
+    duration = f"{raw_duration} دقيقة" if raw_duration else None
+    
     return {
         "anilist_id": media.get("id"),
         "title_english": title_english,
         "title_romaji": title_romaji,
         "description": description,
-        "image_url": media.get("coverImage", {}).get("large"),
+        "image_url": image_url,
+        "duration": duration,
         "episodes_count": media.get("episodes"),
     }

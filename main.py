@@ -65,7 +65,9 @@ async def main():
     dp = Dispatcher(storage=storage)
 
     # 5. Bind Database Middleware to inject session to handlers
+    from app.middlewares.subscription import SubscriptionMiddleware
     dp.update.outer_middleware(DbSessionMiddleware())
+    dp.update.outer_middleware(SubscriptionMiddleware())
 
     # 6. Register Handler Routers
     dp.include_router(admin.router)

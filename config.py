@@ -12,6 +12,7 @@ class Config:
     TELEGRAM_API_SERVER = os.getenv("TELEGRAM_API_SERVER", "").strip() or None
     PROXY_URL = os.getenv("PROXY_URL", "").strip() or None
     SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", "0").strip())
+    CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "").strip() or None
     
     # Parse MOCK_MODE boolean
     mock_mode_str = os.getenv("MOCK_MODE", "True").strip().lower()
@@ -35,6 +36,7 @@ class Config:
         print(f"Proxy URL: {cls.PROXY_URL or 'None'}")
         print(f"Mock Mode: {cls.MOCK_MODE}")
         print(f"Super Admin ID: {cls.SUPER_ADMIN_ID}")
+        print(f"Channel Username: {cls.CHANNEL_USERNAME or 'None'}")
         print(f"Telegram API Server: {cls.TELEGRAM_API_SERVER or 'Default (Official)'}")
         print("----------------------------")
 

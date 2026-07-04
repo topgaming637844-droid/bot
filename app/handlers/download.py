@@ -31,6 +31,7 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
     anime_title = state_data.get("anime_title")
     title_romaji = state_data.get("title_romaji")
     title_english = state_data.get("title_english")
+    duration = state_data.get("duration")
     
     if not anilist_id:
         logger.error("خطأ: تم فقدان سياق الحالة FSM أثناء اختيار الحلقة.")
@@ -167,6 +168,7 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
             if cached_dl:
                 logger.info(f"تحديث كاش روابط التحميل المنتهي للرابط: {play_url}")
                 cached_dl.qualities = qualities
+                cached_dl.duration = duration
                 cached_dl.created_at = datetime.now(timezone.utc)
                 db_session.add(cached_dl)
                 await db_session.commit()
@@ -175,7 +177,8 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
                 logger.info(f"إنشاء كاش روابط تحميل جديد للرابط: {play_url}")
                 new_dl = DownloadCache(
                     play_url=play_url,
-                    qualities=qualities
+                    qualities=qualities,
+                    duration=duration
                 )
                 db_session.add(new_dl)
                 await db_session.commit()

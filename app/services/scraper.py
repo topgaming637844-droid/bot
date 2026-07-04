@@ -15,6 +15,20 @@ class ScraperError(Exception):
     """Base exception for scraping operations."""
     pass
 
+def normalize_quality_name(name: str) -> str:
+    name = name.lower().strip()
+    if "1080" in name or "fhd" in name or "high" in name:
+        return "1080p"
+    if "720" in name or "hd" in name:
+        return "720p"
+    if "480" in name or "sd" in name:
+        return "480p"
+    if "360" in name or "low" in name or "mobile" in name:
+        return "360p"
+    if not name.endswith("p") and name.isdigit():
+        return f"{name}p"
+    return name
+
 def decrypt_resource(resource_data: str, config_settings: Dict[str, Any]) -> str:
     """Decrypts secure embed server URLs from witanime configs."""
     try:
@@ -169,10 +183,10 @@ async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) 
                     match_res = re.search(r'RESOLUTION=(\d+x\d+)', line)
                     match_name = re.search(r'NAME="([^"]+)"', line)
                     if match_name:
-                        current_info = match_name.group(1).lower()
+                        current_info = normalize_quality_name(match_name.group(1))
                     elif match_res:
                         height = match_res.group(1).split("x")[1]
-                        current_info = f"{height}p"
+                        current_info = normalize_quality_name(f"{height}p")
                 elif line and not line.startswith("#"):
                     if current_info:
                         variant_url = urljoin(master_url, line)
@@ -244,16 +258,25 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
                 
     return []
 
-async def get_episodes_scraper(anime_slug: str) -> List[Dict[str, Any]]:
+async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
     """Retrieves the list of episodes for a WitAnime series slug, crawling pagination if present."""
     logger.info(f"جاري جلب قائمة الحلقات للأنمي: {anime_slug}")
     if config.MOCK_MODE:
         logger.info("[MOCK MODE] Generating mock episodes list.")
-        return [{"ep_number": str(i), "play_url": f"https://mock-play-page.com/{anime_slug}-episode-{i}"} for i in range(1, 13)]
+        return {
+            "episodes": [{"ep_number": str(i), "play_url": f"https://mock-play-page.com/{anime_slug}-episode-{i}"} for i in range(1, 13)],
+            "poster_url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_10MB.mp4",
+            "description": "قصة أنمي تجريبية لوضع المحاكاة.",
+            "duration": "24 دقيقة"
+        }
 
     connector = get_connector()
     episodes = []
     seen_urls = set()
+    
+    poster_url = None
+    description = None
+    duration = None
     
     async with aiohttp.ClientSession(connector=connector) as session:
         page_num = 1
@@ -274,14 +297,49 @@ async def get_episodes_scraper(anime_slug: str) -> List[Dict[str, Any]]:
                 logger.warning(f"فشل الاتصال بالصفحة {page_num}: {e}")
                 break
 
+            if page_num == 1:
+                try:
+                    soup = BeautifulSoup(html, "html.parser")
+                    # 1. Parse high-res poster
+                    img_el = soup.select_one(".anime-thumbnail img, .anime-info-right img, img.thumbnail")
+                    if img_el:
+                        img_src = img_el.get("src") or img_el.get("data-src")
+                        if img_src and "default" not in img_src:
+                            if img_src.startswith("https://witanime.you"):
+                                img_src = img_src.replace("https://witanime.you", "https://witanime.pics")
+                            elif img_src.startswith("https://witanime.life"):
+                                img_src = img_src.replace("https://witanime.life", "https://witanime.pics")
+                            poster_url = img_src
+                            
+                    # 2. Parse description/story
+                    story_el = soup.select_one(".anime-story, p.anime-story, .story")
+                    if story_el:
+                        description = story_el.text.strip()
+                        
+                    # 3. Parse duration
+                    duration_el = soup.find(lambda tag: tag.name == "div" and "مدة الحلقة:" in tag.text)
+                    if duration_el:
+                        duration = duration_el.text.replace("مدة الحلقة:", "").strip()
+                    else:
+                        match_dur = re.search(r'<span>مدة الحلقة:</span>\s*([^<]+)', html)
+                        if match_dur:
+                            duration = match_dur.group(1).strip()
+                except Exception as ex:
+                    logger.warning(f"Failed to parse anime page metadata: {ex}")
+
             match = re.search(r"var processedEpisodeData = '([^']+)';", html)
             if not match:
                 if page_num == 1:
                     logger.info(f"لم يتم العثور على processedEpisodeData للأنمي {anime_slug}. يتم التعامل معه كفيلم فردي.")
-                    return [{
-                        "ep_number": "1",
-                        "play_url": f"https://witanime.pics/anime/{anime_slug}/"
-                    }]
+                    return {
+                        "episodes": [{
+                            "ep_number": "1",
+                            "play_url": f"https://witanime.pics/anime/{anime_slug}/"
+                        }],
+                        "poster_url": poster_url,
+                        "description": description,
+                        "duration": duration
+                    }
                 else:
                     break
                     
@@ -321,7 +379,12 @@ async def get_episodes_scraper(anime_slug: str) -> List[Dict[str, Any]]:
     episodes.sort(key=get_ep_num)
     
     logger.info(f"إجمالي الحلقات المستخرجة للأنمي {anime_slug}: {len(episodes)}")
-    return episodes
+    return {
+        "episodes": episodes,
+        "poster_url": poster_url,
+        "description": description,
+        "duration": duration
+    }
 
 async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, referer: Optional[str] = None) -> Optional[str]:
     """Resolves and extracts .m3u8 master playlist using custom player unpacker."""
@@ -497,6 +560,7 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
             for idx in priority_indices + other_indices:
                 res = resources[idx]
                 conf = configs[idx]
+                s_name = server_names[idx] if idx < len(server_names) else ""
                 embed_url = decrypt_resource(res, conf)
                 if embed_url:
                     m3u8_master = await get_m3u8_from_embed(embed_url, session, referer=play_url)
@@ -506,9 +570,14 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
                             resolved_links.update(qualities)
                         else:
                             # Direct MP4 file link resolved from mirror!
-                            resolved_links["480p"] = m3u8_master
-                        if resolved_links:
-                            break  # Found working qualities, skip rest
+                            q_name = normalize_quality_name(s_name) if s_name else "480p"
+                            if q_name not in ["1080p", "720p", "480p", "360p"]:
+                                q_name = "480p"
+                            resolved_links[q_name] = m3u8_master
+                        
+                        # If we resolved at least high res and mobile qualities, we can stop to save time
+                        if all(q in resolved_links for q in ["1080p", "720p", "480p", "360p"]):
+                            break
                             
             if not resolved_links:
                 raise ScraperError("Failed to parse any working HLS streams or direct video files from embed servers")

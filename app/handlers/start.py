@@ -1,32 +1,254 @@
-from aiogram import Router
+import random
+from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.fsm.context import FSMContext
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import config
 
 router = Router(name="start")
 
-@router.message(CommandStart())
-async def cmd_start(message: Message):
-    """Handles the /start command."""
+SUGGESTIONS = [
+    "One Piece", "Naruto Shippuden", "Attack on Titan", "Hunter x Hunter", 
+    "Jujutsu Kaisen", "Demon Slayer", "Death Note", "My Hero Academia",
+    "Bleach", "Fullmetal Alchemist: Brotherhood", "Tokyo Ghoul", "Dragon Ball Super",
+    "Vinland Saga", "Chainsaw Man", "Solo Leveling", "Frieren: Beyond Journey's End",
+    "Steins;Gate", "Monster", "Code Geass", "Haikyuu!!", "One Punch Man"
+]
+
+def get_welcome_markup() -> InlineKeyboardMarkup:
+    # ROW 1: [ 🔍 بحث ] | [ 🎲 إقترح لي ]
+    # ROW 2: [ ⭐ قائمة المفضلة ]
+    # ROW 3: [ 🛠️ الدعم الفني ] | [ ❓ مساعدة ]
+    # ROW 4: [ 📢 للإعلانات والتمويل ]
+    keyboard = [
+        [
+            InlineKeyboardButton(text="🔍 بحث", callback_data="menu_search"),
+            InlineKeyboardButton(text="🎲 إقترح لي", callback_data="menu_suggest")
+        ],
+        [
+            InlineKeyboardButton(text="⭐ قائمة المفضلة", callback_data="menu_favorites")
+        ],
+        [
+            InlineKeyboardButton(text="🛠️ الدعم الفني", callback_data="menu_support"),
+            InlineKeyboardButton(text="❓ مساعدة", callback_data="menu_help")
+        ],
+        [
+            InlineKeyboardButton(text="📢 للإعلانات والتمويل", callback_data="menu_ads")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+async def send_welcome_panel(message: Message):
     welcome_text = (
-        "👋 **مرحباً بك في بوت البحث وتحميل الأنمي المتقدم!**\n\n"
-        "يقوم هذا البوت بتنظيم عمليات البحث باستخدام **AniList GraphQL**، والبحث عن روابط البث المتاحة، "
-        "وإرسال ملفات الفيديو إليك مباشرة. كما أنه يطبق **ذكاء حجم الملف** لتقليل جودة الفيديو تلقائياً "
-        "إذا تجاوز الملف حد حجم تلغرام البالغ 2 جيجابايت.\n\n"
-        "🔍 **طريقة الاستخدام**:\n"
-        "أرسل اسم الأنمي الذي تريد البحث عنه (مثال: `Luffy` أو `One Piece` أو أسماء باللغة العربية).\n\n"
-        "اكتب /help في أي وقت لعرض تعليمات البوت."
+        "✨ <b>أهلاً بك في بوت أنمي وانمي | Anime & Anmie</b> 🎬\n\n"
+        "مرحباً بك في وجهتك الأولى لمشاهدة وتحميل الأنمي بجودة عالية وسرعة فائقة! 🚀\n"
+        "البوت يدعم البحث الذكي (بالعربية والإنجليزية وأسماء الشخصيات) وتنزيل الحلقات مباشرة داخل تلغرام بأحجام تصل إلى 2 جيجابايت.\n\n"
+        "👇 <b>اختر من القائمة أدناه لبدء المغامرة:</b>"
     )
-    await message.answer(welcome_text, parse_mode="Markdown")
+    await message.answer(welcome_text, reply_markup=get_welcome_markup(), parse_mode="HTML")
+
+@router.message(CommandStart())
+async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContext):
+    """Handles the /start command, supporting deep linking."""
+    args = message.text.split()
+    if len(args) > 1:
+        deep_link = args[1]
+        if deep_link.startswith("dl_"):
+            try:
+                cache_id = int(deep_link.split("_")[1])
+                from sqlalchemy import select
+                from app.database.models import DownloadCache
+                
+                stmt = select(DownloadCache).where(DownloadCache.id == cache_id)
+                res = await db_session.execute(stmt)
+                dl_cache = res.scalar_one_or_none()
+                
+                if dl_cache:
+                    await state.clear()
+                    keyboard_buttons = [
+                        [InlineKeyboardButton(text="⭐ تلقائي (حجم ذكي <= 2 جيجابايت)", callback_data=f"dl:auto:{dl_cache.id}")]
+                    ]
+                    quality_row = []
+                    for q in ["1080p", "720p", "480p", "360p"]:
+                        if q in dl_cache.qualities:
+                            quality_row.append(InlineKeyboardButton(text=q, callback_data=f"dl:{q}:{dl_cache.id}"))
+                    if quality_row:
+                        keyboard_buttons.append(quality_row)
+                        
+                    markup = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+                    
+                    anime_title = "أنمي"
+                    try:
+                        from urllib.parse import unquote
+                        decoded = unquote(dl_cache.play_url)
+                        parts = [p for p in decoded.strip("/").split("/") if p]
+                        if parts:
+                            slug_part = parts[-1]
+                            if "الحلقة" in slug_part:
+                                ep_parts = slug_part.split("الحلقة")
+                                ep_num = ep_parts[-1].strip("-").strip()
+                                anime_slug = ep_parts[0].strip("-").strip()
+                                anime_title = f"{anime_slug.replace('-', ' ').title()} - الحلقة {ep_num}"
+                            else:
+                                anime_title = slug_part.replace("-", " ").title()
+                    except Exception:
+                        pass
+                        
+                    await message.answer(
+                        f"🎬 **الأنمي**: {anime_title}\n\n"
+                        f"اختر جودة التحميل المفضلة أدناه:",
+                        reply_markup=markup,
+                        parse_mode="Markdown"
+                    )
+                    return
+                else:
+                    await message.answer("❌ عذراً، انتهت صلاحية هذا الرابط أو لم يعد متوفراً.")
+            except Exception:
+                from app.utils.logging_config import logger
+                logger.exception("Error handling deep link")
+                await message.answer("❌ حدث خطأ أثناء معالجة رابط التحميل المباشر.")
+                return
+
+    await send_welcome_panel(message)
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Handles the /help command."""
     help_text = (
-        "ℹ️ **تعليمات البوت**:\n\n"
-        "1. **البحث**: أرسل اسم الأنمي. يقوم البوت بحل أسماء الشخصيات والأخطاء الإملائية إلى العناوين الرسمية.\n"
-        "2. **الاختيار**: اختر الأنمي المطلوب من قائمة نتائج البحث.\n"
-        "3. **رقم الحلقة**: اكتب رقم الحلقة المطلوبة عندما يطلب منك البوت ذلك.\n"
-        "4. **جودة التحميل**: اختر الجودة المطلوبة، أو اختر **تلقائي (حجم ذكي)** لجعل البوت يختار أعلى جودة مناسبة تحت 2 جيجابايت.\n\n"
-        "⚙️ *ملاحظة: تقتصر حدود رفع البوتات القياسية في تلغرام على 50 ميجابايت. يتميز هذا البوت بدعم الرفع حتى 2 جيجابايت عند تشغيله مع خادم Bot API محلي.*"
+        "ℹ️ **تعليمات استخدام البوت**:\n\n"
+        "1. **البحث**: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
+        "2. **الاختيار**: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
+        "3. **تحديد الحلقة**: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
+        "4. **الجودة**: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
+        "⚙️ *ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.*"
     )
     await message.answer(help_text, parse_mode="Markdown")
+
+@router.callback_query(F.data == "check_sub")
+async def handle_check_subscription(callback: CallbackQuery):
+    bot = callback.bot
+    user_id = callback.from_user.id
+    
+    if not config.CHANNEL_USERNAME:
+        await callback.answer("تم التحقق بنجاح! البوت مفعل للجميع.")
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_welcome_panel(callback.message)
+        return
+        
+    try:
+        member = await bot.get_chat_member(chat_id=config.CHANNEL_USERNAME, user_id=user_id)
+        if member.status in ("member", "administrator", "creator"):
+            await callback.answer("✅ تم التحقق بنجاح! شكراً لاشتراكك.", show_alert=True)
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await send_welcome_panel(callback.message)
+        else:
+            await callback.answer("❌ لم تشترك في القناة بعد! يرجى الاشتراك أولاً.", show_alert=True)
+    except Exception:
+        from app.utils.logging_config import logger
+        logger.warning(f"Error checking sub in callback for user {user_id}")
+        await callback.answer("✅ تم التفعيل بنجاح!")
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_welcome_panel(callback.message)
+
+@router.callback_query(F.data == "menu_search")
+async def handle_menu_search(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer("🔍 **أرسل اسم الأنمي الذي تريد البحث عنه الآن (بالعربية أو الإنجليزية):**")
+
+@router.callback_query(F.data == "menu_suggest")
+async def handle_menu_suggest(callback: CallbackQuery):
+    await callback.answer()
+    suggested = random.choice(SUGGESTIONS)
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🔍 ابحث عن {suggested}", callback_data=f"suggest_search:{suggested}")]
+    ])
+    await callback.message.answer(
+        f"🎲 **اقتراح اليوم لك:**\n\n"
+        f"📺 أنمي: **{suggested}**\n\n"
+        f"اضغط على الزر بالأسفل للبحث عنه تلقائياً 👇",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("suggest_search:"))
+async def handle_suggest_search(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    await callback.answer()
+    query = callback.data.split(":", 1)[1]
+    from app.handlers.search import handle_anime_search
+    fake_msg = Message(
+        message_id=callback.message.message_id,
+        date=callback.message.date,
+        chat=callback.message.chat,
+        from_user=callback.from_user,
+        text=query
+    )
+    await handle_anime_search(fake_msg, db_session, state)
+
+@router.callback_query(F.data == "menu_favorites")
+async def handle_menu_favorites(callback: CallbackQuery, db_session: AsyncSession):
+    await callback.answer()
+    user_id = callback.from_user.id
+    from sqlalchemy import select
+    from app.database.models import UserFavorites
+    
+    stmt = select(UserFavorites).where(UserFavorites.user_id == user_id)
+    res = await db_session.execute(stmt)
+    favs = res.scalars().all()
+    
+    if not favs:
+        await callback.message.answer("⭐ **قائمة المفضلة فارغة حالياً.**\nيمكنك إضافة أي أنمي للمفضلة عند البحث عنه وعرض تفاصيله!")
+        return
+        
+    text = "⭐ **قائمة الأنميات المفضلة لديك:**\n\n"
+    buttons = []
+    for f in favs:
+        buttons.append([InlineKeyboardButton(text=f.anime_title, callback_data=f"suggest_search:{f.anime_title}")])
+        
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.answer(text, reply_markup=markup, parse_mode="Markdown")
+
+@router.callback_query(F.data == "menu_support")
+async def handle_menu_support(callback: CallbackQuery):
+    await callback.answer()
+    support_text = (
+        "🛠️ **الدعم الفني والتواصل:**\n\n"
+        "إذا واجهتك أي مشكلة في استخدام البوت أو استخراج الروابط، يرجى التواصل معنا عبر المعرف التالي:\n"
+        "👉 @botanmie_support\n\n"
+        "نشكرك على استخدام خدماتنا! ❤️"
+    )
+    await callback.message.answer(support_text, parse_mode="Markdown")
+
+@router.callback_query(F.data == "menu_help")
+async def handle_menu_help(callback: CallbackQuery):
+    await callback.answer()
+    help_text = (
+        "ℹ️ **تعليمات استخدام البوت**:\n\n"
+        "1. **البحث**: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
+        "2. **الاختيار**: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
+        "3. **تحديد الحلقة**: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
+        "4. **الجودة**: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
+        "⚙️ *ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.*"
+    )
+    await callback.message.answer(help_text, parse_mode="Markdown")
+
+@router.callback_query(F.data == "menu_ads")
+async def handle_menu_ads(callback: CallbackQuery):
+    await callback.answer()
+    ads_text = (
+        "📢 **للإعلانات والتمويل والتبرع:**\n\n"
+        "لدعم استمرار خوادم البوت وتطويره، أو لطلب مساحات إعلانية داخل البوت والقناة، يرجى التواصل مع الإدارة:\n"
+        "👉 @botanmie_admin\n\n"
+        "رأيكم ودعمكم يهمنا! 🌟"
+    )
+    await callback.message.answer(ads_text, parse_mode="Markdown")
