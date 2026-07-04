@@ -234,14 +234,10 @@ async def webapp_episodes(anilist_id: int):
         episodes.sort(key=lambda x: parse_ep_num(x.ep_number))
         
         # Load HTML template file
-        # عدل مسار الملف عشان يشاور صح على templates
-        template_path = os.path.join(os.path.dirname(__file__), "templates", "episodes.html")
+        template_path = os.path.join(os.path.dirname(__file__), "app", "templates", "episodes.html")
 
         with open(template_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-
-        # هنا بقى التريكة، لازم نبعت الـ content للـ HTMLResponse
-        return HTMLResponse(content=html_content, status_code=200)
+            content = f.read()
             
         # Perform dynamic template replacement
         buttons_html = ""
@@ -256,7 +252,7 @@ async def webapp_episodes(anilist_id: int):
         if start_jinja != -1 and end_jinja != -1:
             content = content[:start_jinja] + buttons_html + content[end_jinja:]
             
-        return content
+        return HTMLResponse(content=content, status_code=200)
 
 @app.get("/webapp/qualities", response_class=HTMLResponse)
 async def webapp_qualities(db_cache_id: int, anilist_id: int, ep_number: str):
@@ -290,7 +286,7 @@ async def webapp_qualities(db_cache_id: int, anilist_id: int, ep_number: str):
         if start_list != -1 and end_list != -1:
             content = content[:start_list] + "\n" + buttons_html + content[end_list:]
             
-        return content
+        return HTMLResponse(content=content, status_code=200)
 
 @app.post("/api/webapp/select_episode")
 async def api_select_episode(payload: WebAppEpisodePayload):
