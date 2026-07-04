@@ -117,14 +117,14 @@ async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContex
 async def cmd_help(message: Message):
     """Handles the /help command."""
     help_text = (
-        "ℹ️ **تعليمات استخدام البوت**:\n\n"
-        "1. **البحث**: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
-        "2. **الاختيار**: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
-        "3. **تحديد الحلقة**: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
-        "4. **الجودة**: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
-        "⚙️ *ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.*"
+        "ℹ️ <b>تعليمات استخدام البوت</b>:\n\n"
+        "1. <b>البحث</b>: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
+        "2. <b>الاختيار</b>: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
+        "3. <b>تحديد الحلقة</b>: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
+        "4. <b>الجودة</b>: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
+        "⚙️ <i>ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.</i>"
     )
-    await message.answer(help_text, parse_mode="Markdown")
+    await message.answer(help_text, parse_mode="HTML")
 
 @router.callback_query(F.data == "check_sub")
 async def handle_check_subscription(callback: CallbackQuery):
@@ -174,11 +174,11 @@ async def handle_menu_suggest(callback: CallbackQuery):
         [InlineKeyboardButton(text=f"🔍 ابحث عن {suggested}", callback_data=f"suggest_search:{suggested}")]
     ])
     await callback.message.answer(
-        f"🎲 **اقتراح اليوم لك:**\n\n"
-        f"📺 أنمي: **{suggested}**\n\n"
+        f"🎲 <b>اقتراح اليوم لك:</b>\n\n"
+        f"📺 أنمي: <b>{suggested}</b>\n\n"
         f"اضغط على الزر بالأسفل للبحث عنه تلقائياً 👇",
         reply_markup=markup,
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 @router.callback_query(F.data.startswith("suggest_search:"))
@@ -207,48 +207,48 @@ async def handle_menu_favorites(callback: CallbackQuery, db_session: AsyncSessio
     favs = res.scalars().all()
     
     if not favs:
-        await callback.message.answer("⭐ **قائمة المفضلة فارغة حالياً.**\nيمكنك إضافة أي أنمي للمفضلة عند البحث عنه وعرض تفاصيله!")
+        await callback.message.answer("⭐ <b>قائمة المفضلة فارغة حالياً.</b>\nيمكنك إضافة أي أنمي للمفضلة عند البحث عنه وعرض تفاصيله!", parse_mode="HTML")
         return
         
-    text = "⭐ **قائمة الأنميات المفضلة لديك:**\n\n"
+    text = "⭐ <b>قائمة الأنميات المفضلة لديك:</b>\n\n"
     buttons = []
     for f in favs:
         buttons.append([InlineKeyboardButton(text=f.anime_title, callback_data=f"suggest_search:{f.anime_title}")])
         
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await callback.message.answer(text, reply_markup=markup, parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=markup, parse_mode="HTML")
 
 @router.callback_query(F.data == "menu_support")
 async def handle_menu_support(callback: CallbackQuery):
     await callback.answer()
     support_text = (
-        "🛠️ **الدعم الفني والتواصل:**\n\n"
+        "🛠️ <b>الدعم الفني والتواصل:</b>\n\n"
         "إذا واجهتك أي مشكلة في استخدام البوت أو استخراج الروابط، يرجى التواصل معنا عبر المعرف التالي:\n"
         "👉 @botanmie_support\n\n"
         "نشكرك على استخدام خدماتنا! ❤️"
     )
-    await callback.message.answer(support_text, parse_mode="Markdown")
+    await callback.message.answer(support_text, parse_mode="HTML")
 
 @router.callback_query(F.data == "menu_help")
 async def handle_menu_help(callback: CallbackQuery):
     await callback.answer()
     help_text = (
-        "ℹ️ **تعليمات استخدام البوت**:\n\n"
-        "1. **البحث**: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
-        "2. **الاختيار**: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
-        "3. **تحديد الحلقة**: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
-        "4. **الجودة**: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
-        "⚙️ *ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.*"
+        "ℹ️ <b>تعليمات استخدام البوت</b>:\n\n"
+        "1. <b>البحث</b>: أرسل اسم الأنمي باللغة العربية أو الإنجليزية أو اسم الشخصية.\n"
+        "2. <b>الاختيار</b>: اختر الأنمي المناسب من قائمة نتائج البحث المعروضة.\n"
+        "3. <b>تحديد الحلقة</b>: اكتب رقم الحلقة التي ترغب بتحميلها.\n"
+        "4. <b>الجودة</b>: اختر الجودة المفضلة أو اختر 'تلقائي' ليقوم البوت بضبط جودة الفيديو تلقائياً لتناسب حجم الرفع.\n\n"
+        "⚙️ <i>ملاحظة: يدعم البوت تحميل ملفات الأنمي الكبيرة حتى 2 جيجابايت لتجربة متكاملة.</i>"
     )
-    await callback.message.answer(help_text, parse_mode="Markdown")
+    await callback.message.answer(help_text, parse_mode="HTML")
 
 @router.callback_query(F.data == "menu_ads")
 async def handle_menu_ads(callback: CallbackQuery):
     await callback.answer()
     ads_text = (
-        "📢 **للإعلانات والتمويل والتبرع:**\n\n"
+        "📢 <b>للإعلانات والتمويل والتبرع:</b>\n\n"
         "لدعم استمرار خوادم البوت وتطويره، أو لطلب مساحات إعلانية داخل البوت والقناة، يرجى التواصل مع الإدارة:\n"
         "👉 @botanmie_admin\n\n"
         "رأيكم ودعمكم يهمنا! 🌟"
     )
-    await callback.message.answer(ads_text, parse_mode="Markdown")
+    await callback.message.answer(ads_text, parse_mode="HTML")

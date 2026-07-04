@@ -132,17 +132,53 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
                 if len(parts) >= 2:
                     cleaned_path = f"{parts[-2]}/{parts[-1]}"
                     
-        # Download from official Telegram cloud API directly via aiohttp
-        download_url = f"https://api.telegram.org/file/bot{bot.token}/{cleaned_path}"
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.get(download_url, ssl=False, timeout=30) as resp:
-                if resp.status == 200:
-                    image_bytes = await resp.read()
-                    with open(thumb_path, "wb") as f:
-                        f.write(image_bytes)
-                else:
-                    raise Exception(f"Official Telegram API returned status {resp.status} for file download")
+        # Try Method 1: Local filesystem direct access (in case of shared volume or same container)
+        success = False
+        if file_path and Path(file_path).exists():
+            try:
+                import shutil
+                shutil.copy(file_path, thumb_path)
+                logger.info("Custom thumbnail copied directly from local filesystem.")
+                success = True
+            except Exception as e:
+                logger.warning(f"Failed local filesystem copy: {e}")
+                
+        # Try Method 2: Local Bot API server HTTP download (if custom server configured)
+        if not success and config.TELEGRAM_API_SERVER:
+            try:
+                base_url = config.TELEGRAM_API_SERVER.rstrip("/")
+                local_url = f"{base_url}/file/bot{bot.token}/{cleaned_path}"
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(local_url, ssl=False, timeout=15) as resp:
+                        if resp.status == 200:
+                            image_bytes = await resp.read()
+                            with open(thumb_path, "wb") as f:
+                                f.write(image_bytes)
+                            logger.info("Custom thumbnail downloaded from local Bot API HTTP server.")
+                            success = True
+                        else:
+                            logger.warning(f"Local Bot API server returned {resp.status} for file download")
+            except Exception as e:
+                logger.warning(f"Failed local Bot API HTTP download: {e}")
+                
+        # Try Method 3: Official Telegram Cloud HTTP download
+        if not success:
+            cloud_url = f"https://api.telegram.org/file/bot{bot.token}/{cleaned_path}"
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(cloud_url, ssl=False, timeout=20) as resp:
+                    if resp.status == 200:
+                        image_bytes = await resp.read()
+                        with open(thumb_path, "wb") as f:
+                            f.write(image_bytes)
+                        logger.info("Custom thumbnail downloaded from official Telegram Cloud.")
+                        success = True
+                    else:
+                        raise Exception(f"Official Telegram API returned status {resp.status} for file download")
+                        
+        if not success:
+            raise Exception("Could not retrieve file using any of the available fallback methods.")
         
         # Clean up custom_thumb_id.txt if it exists to avoid conflicts
         if thumb_id_path.exists():
