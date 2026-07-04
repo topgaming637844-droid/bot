@@ -306,7 +306,7 @@ async def download_multipart(
     status_message: Message,
     total_size: int,
     quality: str,
-    num_parts: int = 25
+    num_parts: int = 16
 ) -> bool:
     """Downloads a direct file in parallel parts using HTTP Range requests to maximize speed."""
     connector = get_session_connector(limit=50)
@@ -328,6 +328,9 @@ async def download_multipart(
     last_update = 0
     
     async def download_part(part_idx: int, start_byte: int, end_byte: int, part_path: Path, session: aiohttp.ClientSession):
+        # Staggered connection starts to prevent triggering firewalls/DDoS rate limits
+        await asyncio.sleep(0.15 * part_idx)
+        
         part_headers = headers.copy()
         part_headers["Range"] = f"bytes={start_byte}-{end_byte}"
         
@@ -368,8 +371,11 @@ async def download_multipart(
                                 except Exception:
                                     pass
                     return True
-            except Exception:
-                logger.exception(f"Error downloading part {part_idx}, attempt {attempt+1}")
+            except Exception as e:
+                if attempt == 2:
+                    logger.exception(f"Error downloading part {part_idx} after all attempts failed")
+                else:
+                    logger.warning(f"Error downloading part {part_idx}, attempt {attempt+1}: {e}")
                 await asyncio.sleep(1)
         return False
 
