@@ -73,24 +73,27 @@ def get_referer_for_url(url: str) -> str:
 
 async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
     """
-    Validates a stream URL by requesting its headers and retrieving the file size.
-    For HLS playlists (.m3u8), estimates the total size by analyzing variant playlists and segment sizes.
-    """
-    # Parse mock override parameters if they exist
-    parsed = urlparse(url)
-    query_params = parse_qs(parsed.query)
-    if "mock_size" in query_params:
-        return int(query_params["mock_size"][0])
-
-async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
-    """
     Calculates exact real file size via HEAD or streaming GET response footprint.
     Does NOT use any estimated guessing or baseline quality approximations.
     """
+    # Parse mock override parameters if they exist
+    try:
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        if "mock_size" in query_params:
+            return int(query_params["mock_size"][0])
+    except Exception:
+        pass
+
     if ".m3u8" in url or "master" in url or "playlist" in url or "stream" in url:
         try:
             headers = get_browser_headers(url)
             async with session.get(url, headers=headers, ssl=False, timeout=10) as response:
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "text/html" in content_type:
+                    logger.warning(f"Rejecting HLS request due to HTML content type for {url}")
+                    return 0
                 if response.status == 200:
                     data = await response.read()
                     if data.startswith(b"\x89PNG"):
@@ -137,6 +140,10 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
     # 1. Try HEAD request to extract Content-Length
     try:
         async with session.head(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type:
+                logger.warning(f"Rejecting HEAD request due to HTML content type for {url}")
+                return 0
             if response.status in [200, 206]:
                 length = response.headers.get("Content-Length")
                 if length and int(length) > 0:
@@ -152,6 +159,11 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
     # 2. Fire streaming GET request to capture active Content-Length footprint
     try:
         async with session.get(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if "text/html" in content_type:
+                logger.warning(f"Rejecting GET request due to HTML content type for {url}")
+                response.close()
+                return 0
             length = response.headers.get("Content-Length")
             cr = response.headers.get("Content-Range")
             if length and int(length) > 0:
@@ -270,6 +282,10 @@ async def download_hls(
         async with aiohttp.ClientSession(connector=connector, headers=keep_alive_headers) as session:
             logger.info(f"Fetching HLS playlist: {m3u8_url}")
             async with session.get(m3u8_url, headers=headers, ssl=False, timeout=15) as resp:
+                content_type = resp.headers.get("Content-Type", "").lower()
+                if "text/html" in content_type:
+                    logger.error(f"Error: playlist request returned HTML content type: {content_type}")
+                    return False
                 if resp.status != 200:
                     logger.error(f"Error in process: failed to fetch playlist {m3u8_url}, status {resp.status}")
                     return False
@@ -565,6 +581,10 @@ async def download_file(
         async with aiohttp.ClientSession(connector=connector, headers=keep_alive_headers) as session:
             client_timeout = aiohttp.ClientTimeout(total=None, sock_read=60)
             async with session.get(url, headers=headers, allow_redirects=True, ssl=False, timeout=client_timeout) as response:
+                content_type = response.headers.get("Content-Type", "").lower()
+                if "text/html" in content_type:
+                    logger.error(f"Error: download target returned HTML content type instead of video: {content_type}")
+                    return False
                 if response.status not in [200, 206]:
                     logger.error(f"Error in process: standard download returned status {response.status}")
                     return False
