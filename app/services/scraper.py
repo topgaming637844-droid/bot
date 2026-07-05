@@ -14,6 +14,8 @@ from app.services.anilist import get_connector
 from app.utils.logging_config import logger
 from playwright.async_api import async_playwright
 
+
+
 async def get_html_headless(url: str) -> str:
     try:
         async with async_playwright() as p:
@@ -25,6 +27,16 @@ async def get_html_headless(url: str) -> str:
             return html
     except Exception:
         return ""
+# ===== تعريف المتغيرات أولاً مع قيم افتراضية =====
+CURL_CFFI_AVAILABLE = False
+CurlAsyncSession = None
+
+try:
+    from curl_cffi.requests import AsyncSession as CurlAsyncSession
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    pass
+
 class ScraperError(Exception):
     """Base exception for scraping operations."""
     pass
