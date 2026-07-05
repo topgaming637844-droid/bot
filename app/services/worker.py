@@ -104,58 +104,86 @@ async def recover_stuck_tasks(db_session_factory):
     except Exception:
         logger.exception("Error during task recovery on boot")
 
-async def task_consumer_worker(bot: Bot, db_session_factory):
-    """Indefinite background consumer worker loop processing tasks sequentially."""
-    logger.info("Background task consumer worker loop started.")
-    while True:
-        try:
-            async with db_session_factory() as session:
-                stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.status == "pending").order_by(PersistentTaskQueue.id.asc()).limit(1)
-                res = await session.execute(stmt)
-                task = res.scalars().first()
-                if not task:
-                    await asyncio.sleep(3)
-                    continue
-
-                # Mark task as processing
-                task.status = "processing"
-                task.updated_at = datetime.now(timezone.utc)
-                task_id = task.id
-                user_id = task.user_id
-                chat_id = task.chat_id
-                message_id = task.message_id
-                anilist_id = task.anilist_id
-                anime_title = task.anime_title
-                episode_num = task.episode_num
-                quality = task.quality
+async def _process_single_task_wrapper(
+    task_id: int,
+    user_id: int,
+    chat_id: int,
+    message_id: Optional[int],
+    anilist_id: int,
+    anime_title: str,
+    episode_num: str,
+    quality: str,
+    bot: Bot,
+    db_session_factory
+):
+    try:
+        success = await execute_queued_task(
+            task_id, user_id, chat_id, message_id, anilist_id, anime_title, episode_num, quality, bot, db_session_factory
+        )
+        async with db_session_factory() as session:
+            stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.id == task_id)
+            res = await session.execute(stmt)
+            db_task = res.scalar_one_or_none()
+            if db_task:
+                db_task.status = "completed" if success else "failed"
+                db_task.updated_at = datetime.now(timezone.utc)
+                await session.commit()
+    except Exception as e:
+        logger.exception(f"Error processing task ID {task_id}")
+        async with db_session_factory() as session:
+            stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.id == task_id)
+            res = await session.execute(stmt)
+            db_task = res.scalar_one_or_none()
+            if db_task:
+                db_task.status = "failed"
+                db_task.updated_at = datetime.now(timezone.utc)
                 await session.commit()
 
-            # Execute task outside active session
-            try:
-                success = await execute_queued_task(
-                    task_id, user_id, chat_id, message_id, anilist_id, anime_title, episode_num, quality, bot, db_session_factory
-                )
+async def task_consumer_worker(bot: Bot, db_session_factory):
+    """Indefinite background consumer worker loop processing multi-user tasks concurrently."""
+    logger.info("Background task consumer worker loop started with multi-user concurrent processing.")
+    active_worker_tasks = set()
+    MAX_CONCURRENT_WORKER_TASKS = 5
+
+    while True:
+        try:
+            # Clean up finished tasks from set
+            active_worker_tasks = {t for t in active_worker_tasks if not t.done()}
+            
+            if len(active_worker_tasks) < MAX_CONCURRENT_WORKER_TASKS:
                 async with db_session_factory() as session:
-                    stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.id == task_id)
+                    stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.status == "pending").order_by(PersistentTaskQueue.id.asc()).limit(1)
                     res = await session.execute(stmt)
-                    db_task = res.scalar_one_or_none()
-                    if db_task:
-                        db_task.status = "completed" if success else "failed"
-                        db_task.updated_at = datetime.now(timezone.utc)
+                    task = res.scalars().first()
+                    if task:
+                        task.status = "processing"
+                        task.updated_at = datetime.now(timezone.utc)
+                        
+                        t_id = task.id
+                        u_id = task.user_id
+                        c_id = task.chat_id
+                        m_id = task.message_id
+                        a_id = task.anilist_id
+                        a_title = task.anime_title
+                        ep_num = task.episode_num
+                        q_val = task.quality
+                        
                         await session.commit()
-            except Exception as e:
-                logger.exception(f"Error processing task ID {task_id}")
-                async with db_session_factory() as session:
-                    stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.id == task_id)
-                    res = await session.execute(stmt)
-                    db_task = res.scalar_one_or_none()
-                    if db_task:
-                        db_task.status = "failed"
-                        db_task.updated_at = datetime.now(timezone.utc)
-                        await session.commit()
+                        
+                        # Launch task concurrently in parallel
+                        worker_task = asyncio.create_task(
+                            _process_single_task_wrapper(
+                                t_id, u_id, c_id, m_id, a_id, a_title, ep_num, q_val, bot, db_session_factory
+                            )
+                        )
+                        active_worker_tasks.add(worker_task)
+                    else:
+                        await asyncio.sleep(2)
+            else:
+                await asyncio.sleep(1)
         except Exception:
             logger.exception("Error in task consumer loop")
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
 
 async def self_heal_episode_cache(
     anilist_id: int,

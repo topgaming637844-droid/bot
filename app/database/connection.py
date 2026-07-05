@@ -44,4 +44,9 @@ async def init_db():
         except Exception as e:
             print(f"Warning while dropping cache tables: {e}")
         await conn.run_sync(Base.metadata.create_all)
+        try:
+            if not is_sqlite:
+                await conn.execute(text("ALTER TABLE telegram_file_cache ADD COLUMN IF NOT EXISTS file_size DOUBLE PRECISION;"))
+        except Exception as e:
+            print(f"Info on column migration for telegram_file_cache.file_size: {e}")
     print("Database tables initialized successfully.")
