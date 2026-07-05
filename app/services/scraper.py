@@ -146,11 +146,12 @@ def get_global_cookie_jar() -> aiohttp.CookieJar:
 WITANIME_DOMAINS = ["witanime.life"]
 
 def get_browser_headers(referer: str = f"https://{WITANIME_DOMAIN}/") -> dict:
+    safe_referer = quote(referer, safe=":/?&=")
     return {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
-        "Referer": referer,
+        "Referer": safe_referer,
         "Sec-Ch-Ua": '"Chromium";v="123", "Not:A-Brand";v="8", "Google Chrome";v="123"',
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Ch-Ua-Platform": '"Windows"',
@@ -335,7 +336,7 @@ async def _run_scraper_search(session: Any, title: str, search_queries: List[str
     ]
     for domain in WITANIME_DOMAINS:
         for slug_cand in slug_candidates:
-            test_url = f"https://{domain}/anime/{slug_cand}/"
+            test_url = f"https://{domain}/anime/{quote(slug_cand)}/"
             try:
                 if hasattr(session, 'get') and hasattr(session, 'impersonate'):
                     resp = await session.get(test_url, headers=get_browser_headers(test_url), timeout=5)
@@ -471,7 +472,7 @@ async def _run_get_episodes(session: Any, anime_slug: str) -> Dict[str, Any]:
             # We already fetched the HTML for page 1
             pass
         else:
-            url = f"https://{active_domain}/anime/{resolved_slug}/page/{page_num}/"
+            url = f"https://{active_domain}/anime/{quote(resolved_slug)}/page/{page_num}/"
             try:
                 html = await get_html(url, session)
                 if html == "STATUS_403_FORBIDDEN":
@@ -1311,7 +1312,7 @@ async def try_fetch_anime_page_with_fallbacks(session: Any, anime_slug: str) -> 
     
     for slug in slug_variations:
         for domain in domains_to_try:
-            url = f"https://{domain}/anime/{slug}/"
+            url = f"https://{domain}/anime/{quote(slug)}/"
             logger.info(f"Attempting fallback fetch on: {url}")
             try:
                 html = await get_html(url, session)

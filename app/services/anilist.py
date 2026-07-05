@@ -132,10 +132,18 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
         curl_cffi_available = False
         CurlAsyncSession = None
 
+    try:
+        from app.utils.user_agents import get_random_user_agent
+        ua = get_random_user_agent()
+    except Exception:
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Origin": "https://anilist.co",
+        "Referer": "https://anilist.co/",
+        "User-Agent": ua
     }
     
     for attempt in range(2):
@@ -160,9 +168,11 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                         for media in media_list:
                             results.append(await parse_media_node(media))
                     else:
-                        logger.error(f"Error in process: media query returned status {response.status_code}")
-                        if response.status_code == 403 and attempt == 0:
-                            raise Exception("403 Forbidden on AniList")
+                        logger.warning(f"AniList returned status {response.status_code}")
+                        if response.status_code == 403:
+                            logger.warning("AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.")
+                            return []
+                        raise Exception(f"AniList status {response.status_code}")
             else:
                 connector = get_connector() if attempt == 0 else None
                 async with aiohttp.ClientSession(connector=connector) as session:
@@ -174,9 +184,11 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                             for media in media_list:
                                 results.append(await parse_media_node(media))
                         else:
-                            logger.error(f"Error in process: media query returned status {response.status}")
-                            if response.status == 403 and attempt == 0:
-                                raise Exception("403 Forbidden on AniList")
+                            logger.warning(f"AniList returned status {response.status}")
+                            if response.status == 403:
+                                logger.warning("AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.")
+                                return []
+                            raise Exception(f"AniList status {response.status}")
                                 
             # 2. If no direct media found, fallback to character search
             if not results:
@@ -200,7 +212,10 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                                         results.append(await parse_media_node(media))
                                         seen_ids.add(media["id"])
                         else:
-                            logger.error(f"Error in process: character query returned status {response.status_code}")
+                            logger.warning(f"AniList character search returned status {response.status_code}")
+                            if response.status_code == 403:
+                                logger.warning("AniList returned 403 Forbidden on character search. Silently failing over to local WitAnime scraper.")
+                                return []
                 else:
                     connector = get_connector() if attempt == 0 else None
                     async with aiohttp.ClientSession(connector=connector) as session:
@@ -217,7 +232,10 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                                             results.append(await parse_media_node(media))
                                             seen_ids.add(media["id"])
                             else:
-                                logger.error(f"Error in process: character query returned status {response.status}")
+                                logger.warning(f"AniList character search returned status {response.status}")
+                                if response.status == 403:
+                                    logger.warning("AniList returned 403 Forbidden on character search. Silently failing over to local WitAnime scraper.")
+                                    return []
                                 
             logger.info(f"Cloud index search returned {len(results)} normalized titles.")
             if results:
