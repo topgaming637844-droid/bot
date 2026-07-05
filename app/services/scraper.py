@@ -124,10 +124,16 @@ def unpack_dean_edwards(packed_text: str) -> str:
             return word
 
         unpacked = re.sub(r"\b\w+\b", replace_word, p)
-        return unpacked.replace("\\'", "'")
     except Exception:
         logger.exception("Error in process: failed to unpack Dean Edwards packed JS")
         return ""
+
+try:
+    from curl_cffi.requests import AsyncSession as CurlAsyncSession
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    CurlAsyncSession = None
 
 GLOBAL_COOKIE_JAR: Optional[aiohttp.CookieJar] = None
 
@@ -155,34 +161,50 @@ def get_browser_headers(referer: str = f"https://{WITANIME_DOMAIN}/") -> dict:
         "Upgrade-Insecure-Requests": "1"
     }
 
-async def harvest_session_cookies(domain: str, session: aiohttp.ClientSession):
+async def harvest_session_cookies(domain: str, session: Any):
     """Harvests initial session cookies from base domain before sending queries."""
     base_url = f"https://{domain}/"
     try:
         headers = get_browser_headers(base_url)
-        async with session.get(base_url, headers=headers, ssl=False, timeout=6) as resp:
-            if resp.status == 200:
-                logger.info(f"Successfully harvested session cookies from {domain}")
-            elif resp.status == 403:
+        if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+            resp = await session.get(base_url, headers=headers, timeout=6)
+            if resp.status_code == 200:
+                logger.info(f"Successfully harvested session cookies from {domain} via TLS Impersonation")
+            elif resp.status_code == 403:
                 logger.warning(f"Session cookie harvest on {domain} encountered 403 Forbidden.")
+        else:
+            async with session.get(base_url, headers=headers, ssl=False, timeout=6) as resp:
+                if resp.status == 200:
+                    logger.info(f"Successfully harvested session cookies from {domain}")
+                elif resp.status == 403:
+                    logger.warning(f"Session cookie harvest on {domain} encountered 403 Forbidden.")
     except Exception as e:
         logger.warning(f"Failed harvesting cookies from {domain}: {e}")
 
-async def get_html(url: str, session: aiohttp.ClientSession) -> str:
+async def get_html(url: str, session: Any) -> str:
     """Fetches HTML content with browser headers and cookie session."""
     headers = get_browser_headers(url)
-    proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
-    logger.info(f"Scraping page: {url}{proxy_str}")
+    logger.info(f"Scraping page: {url}")
     
     try:
-        async with session.get(url, headers=headers, ssl=False, timeout=12) as response:
-            if response.status == 200:
-                return await response.text()
-            elif response.status == 403:
+        if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+            response = await session.get(url, headers=headers, timeout=12)
+            if response.status_code == 200:
+                return response.text
+            elif response.status_code == 403:
                 logger.warning(f"HTTP 403 Forbidden encountered on {url}. Cloudflare protection active.")
                 return "STATUS_403_FORBIDDEN"
-            logger.warning(f"HTTP status {response.status} fetching {url}")
+            logger.warning(f"HTTP status {response.status_code} fetching {url}")
             return ""
+        else:
+            async with session.get(url, headers=headers, ssl=False, timeout=12) as response:
+                if response.status == 200:
+                    return await response.text()
+                elif response.status == 403:
+                    logger.warning(f"HTTP 403 Forbidden encountered on {url}. Cloudflare protection active.")
+                    return "STATUS_403_FORBIDDEN"
+                logger.warning(f"HTTP status {response.status} fetching {url}")
+                return ""
     except Exception as e:
         logger.warning(f"Connection failed for {url}: {e}")
         return ""
@@ -246,6 +268,87 @@ async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) 
         logger.exception(f"Error in process while parsing master playlist {master_url}")
     return qualities
 
+async def _run_scraper_search(session: Any, title: str, search_queries: List[str]) -> List[Dict[str, Any]]:
+    for idx, domain in enumerate(WITANIME_DOMAINS):
+        if idx > 0:
+            await asyncio.sleep(1.5)  # Rate-limit mitigation delay
+            
+        await harvest_session_cookies(domain, session)
+        is_403_blocked = False
+        
+        for q_path in search_queries:
+            search_url = f"https://{domain}/{q_path.lstrip('/')}"
+            try:
+                html = await get_html(search_url, session)
+                if html == "STATUS_403_FORBIDDEN":
+                    logger.warning(f"Domain {domain} returned 403 Forbidden. Aborting further domain query loops.")
+                    is_403_blocked = True
+                    break
+                if not html:
+                    continue
+                soup = BeautifulSoup(html, "html.parser")
+                details = soup.select(".anime-card-title a")
+                if not details:
+                    details = soup.select(".anime-card-details a, .anime-card-poster a, h3 a")
+                
+                if details:
+                    logger.info(f"Found {len(details)} posts matching search query on {domain}.")
+                    resolve_tasks = []
+                    direct_results = []
+                    seen_slugs = set()
+                    
+                    for a in details:
+                        href = a.get("href", "")
+                        if "/anime/" in href:
+                            slug = href.split("/anime/")[1].strip("/")
+                            if slug not in seen_slugs:
+                                seen_slugs.add(slug)
+                                direct_results.append({"title": a.text.strip(), "slug": slug})
+                        elif "/episode/" in href:
+                            resolve_tasks.append(resolve_anime_info(href, session))
+                            
+                    resolved = await asyncio.gather(*resolve_tasks)
+                    for item in resolved:
+                        if item and item["slug"] not in seen_slugs:
+                            seen_slugs.add(item["slug"])
+                            direct_results.append(item)
+                            
+                    if direct_results:
+                        logger.info(f"Resolved {len(direct_results)} unique anime series from {domain}.")
+                        return direct_results[:10]
+            except Exception as e:
+                logger.warning(f"Error searching {domain}: {e}")
+                
+        if is_403_blocked:
+            break
+                
+    # Direct slug resolution fallback if search queries returned empty
+    from app.utils.match import sanitize_search_query
+    possible_slug = sanitize_search_query(title).replace(" ", "-")
+    slug_candidates = [
+        possible_slug,
+        f"{possible_slug}-tv",
+        f"{possible_slug}-season-1"
+    ]
+    for domain in WITANIME_DOMAINS:
+        for slug_cand in slug_candidates:
+            test_url = f"https://{domain}/anime/{slug_cand}/"
+            try:
+                if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                    resp = await session.get(test_url, headers=get_browser_headers(test_url), timeout=5)
+                    if resp.status_code == 200:
+                        logger.info(f"Direct slug fallback matched: {test_url}")
+                        return [{"title": title, "slug": slug_cand}]
+                else:
+                    async with session.get(test_url, headers=get_browser_headers(test_url), ssl=False, timeout=5) as resp:
+                        if resp.status == 200:
+                            logger.info(f"Direct slug fallback matched: {test_url}")
+                            return [{"title": title, "slug": slug_cand}]
+            except Exception:
+                pass
+
+    return []
+
 async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
     """Searches for anime on WitAnime and resolves unique parent series with multi-domain fallback."""
     normalized_title = title.replace("×", " x ").replace(":", " ").replace("-", " ")
@@ -261,78 +364,14 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
         f"?s={quote(normalized_title)}"
     ]
     
-    connector = get_connector()
-    async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-        for idx, domain in enumerate(WITANIME_DOMAINS):
-            if idx > 0:
-                await asyncio.sleep(1.5)  # Rate-limit mitigation delay
-                
-            await harvest_session_cookies(domain, session)
-            is_403_blocked = False
-            
-            for q_path in search_queries:
-                search_url = f"https://{domain}/{q_path.lstrip('/')}"
-                try:
-                    html = await get_html(search_url, session)
-                    if html == "STATUS_403_FORBIDDEN":
-                        logger.warning(f"Domain {domain} returned 403 Forbidden. Aborting further domain query loops.")
-                        is_403_blocked = True
-                        break
-                    if not html:
-                        continue
-                    soup = BeautifulSoup(html, "html.parser")
-                    details = soup.select(".anime-card-title a")
-                    if not details:
-                        details = soup.select(".anime-card-details a, .anime-card-poster a, h3 a")
-                    
-                    if details:
-                        logger.info(f"Found {len(details)} posts matching search query on {domain}.")
-                        resolve_tasks = []
-                        direct_results = []
-                        seen_slugs = set()
-                        
-                        for a in details:
-                            href = a.get("href", "")
-                            if "/anime/" in href:
-                                slug = href.split("/anime/")[1].strip("/")
-                                if slug not in seen_slugs:
-                                    seen_slugs.add(slug)
-                                    direct_results.append({"title": a.text.strip(), "slug": slug})
-                            elif "/episode/" in href:
-                                resolve_tasks.append(resolve_anime_info(href, session))
-                                
-                        resolved = await asyncio.gather(*resolve_tasks)
-                        for item in resolved:
-                            if item and item["slug"] not in seen_slugs:
-                                seen_slugs.add(item["slug"])
-                                direct_results.append(item)
-                                
-                        if direct_results:
-                            logger.info(f"Resolved {len(direct_results)} unique anime series from {domain}.")
-                            return direct_results[:10]
-                except Exception as e:
-                    logger.warning(f"Error searching {domain}: {e}")
-                    
-        # Direct slug resolution fallback if search queries returned empty
-        from app.utils.match import sanitize_search_query
-        possible_slug = sanitize_search_query(title).replace(" ", "-")
-        slug_candidates = [
-            possible_slug,
-            f"{possible_slug}-tv",
-            f"{possible_slug}-season-1"
-        ]
-        for domain in WITANIME_DOMAINS:
-            for slug_cand in slug_candidates:
-                test_url = f"https://{domain}/anime/{slug_cand}/"
-                try:
-                    async with session.get(test_url, headers=get_browser_headers(test_url), ssl=False, timeout=5) as resp:
-                        if resp.status == 200:
-                            logger.info(f"Direct slug fallback matched: {test_url}")
-                            return [{"title": title, "slug": slug_cand}]
-                except Exception:
-                    pass
-
-    return []
+    if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+        logger.info("Using curl_cffi TLS Impersonation (chrome120) for Cloudflare bypass.")
+        async with CurlAsyncSession(impersonate="chrome120") as session:
+            return await _run_scraper_search(session, title, search_queries)
+    else:
+        connector = get_connector()
+        async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+            return await _run_scraper_search(session, title, search_queries)
 
 async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
     """Retrieves the list of episodes for a WitAnime series slug, crawling pagination if present."""
