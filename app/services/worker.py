@@ -27,6 +27,30 @@ def make_hashtag(title_str: str) -> str:
     cleaned = re.sub(r'\s+', '_', cleaned)
     return cleaned
 
+async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
+    """Helper to retrieve and download custom thumbnail from Telegram to local file."""
+    from app.utils.settings import get_setting
+    file_id = await get_setting("custom_thumb_file_id")
+    if not file_id:
+        return None
+        
+    local_path = config.DOWNLOAD_DIR / "custom_thumb.jpg"
+    if local_path.exists():
+        return FSInputFile(str(local_path))
+        
+    try:
+        logger.info(f"Downloading custom thumbnail file from Telegram file_id: {file_id}")
+        file_info = await bot.get_file(file_id)
+        if file_info and file_info.file_path:
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            await bot.download_file(file_info.file_path, str(local_path))
+            if local_path.exists():
+                return FSInputFile(str(local_path))
+    except Exception as e:
+        logger.warning(f"Failed to download custom thumbnail from Telegram: {e}")
+        
+    return None
+
 async def recover_stuck_tasks(db_session_factory):
     """Resets any 'processing' tasks back to 'pending' on startup."""
     try:
@@ -329,10 +353,7 @@ async def execute_queued_task(
             try: await bot.delete_message(chat_id=chat_id, message_id=status_msg_id)
             except Exception: pass
         
-        # Retrieve custom thumbnail File ID from settings
-        from app.utils.settings import get_setting
-        thumb_file_id = await get_setting("custom_thumb_file_id")
-        thumb_input = thumb_file_id if thumb_file_id else None
+        thumb_input = await get_thumbnail_input(bot)
         
         await bot.send_video(
             chat_id=chat_id,
@@ -462,9 +483,7 @@ async def execute_queued_task(
             except Exception: pass
 
         video_file = FSInputFile(str(temp_file_path))
-        from app.utils.settings import get_setting
-        thumb_file_id = await get_setting("custom_thumb_file_id")
-        thumb_input = thumb_file_id if thumb_file_id else None
+        thumb_input = await get_thumbnail_input(bot)
 
         sent_msg = await bot.send_video(
             chat_id=chat_id,

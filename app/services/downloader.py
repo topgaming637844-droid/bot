@@ -180,7 +180,7 @@ async def download_segment(
     session: aiohttp.ClientSession,
     headers: dict,
     is_png_wrapped: bool,
-    semaphore: AdaptiveSemaphore
+    semaphore: asyncio.Semaphore
 ) -> Tuple[int, Optional[bytes]]:
     """Downloads a single segment chunk, checking and stripping fake PNG signature with retry mechanism."""
     max_retries = 5
@@ -205,19 +205,13 @@ async def download_segment(
                         seg_data = await resp.read()
                         if is_png_wrapped and seg_data.startswith(b"\x89PNG"):
                             seg_data = seg_data[252:]
-                        # Gradually scale up pool limit on success
-                        await semaphore.adjust_limit(semaphore.limit + 1)
                         return idx, seg_data
                     elif resp.status == 502:
-                        # Scale down on 502 Bad Gateway
-                        await semaphore.adjust_limit(semaphore.limit // 2)
-                        logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} 502 error, throttling concurrency limit to {semaphore.limit}")
+                        logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} 502 error")
                     else:
                         logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} returned status {resp.status}")
             except Exception as e:
-                # Scale down on network exceptions / timeouts
-                await semaphore.adjust_limit(semaphore.limit // 2)
-                logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} download error: {e}, throttling concurrency limit to {semaphore.limit}")
+                logger.warning(f"[Attempt {attempt+1}/{max_retries}] Segment {idx} download error: {e}")
             if attempt < max_retries - 1:
                 backoff = min(2 * (2 ** attempt), 16)
                 await asyncio.sleep(backoff)
@@ -290,24 +284,58 @@ async def download_hls(
             actual_seg_size = first_seg_size - 252 if is_png_wrapped else first_seg_size
             estimated_total_size = total_segments * actual_seg_size
             
-            # Spawn parallel download tasks
-            semaphore = AdaptiveSemaphore(20)
+            # Spawn parallel download tasks with progress tracking
+            semaphore = asyncio.Semaphore(15)
+            completed_segments = 0
+            
+            async def download_segment_with_progress(idx, seg_url, is_png_wrapped, sem):
+                nonlocal completed_segments
+                res = await download_segment(idx, seg_url, session, headers, is_png_wrapped, sem)
+                completed_segments += 1
+                return res
+
             tasks = [
-                download_segment(idx, seg_url, session, headers, is_png_wrapped, semaphore)
+                download_segment_with_progress(idx, seg_url, is_png_wrapped, semaphore)
                 for idx, seg_url in enumerate(segment_urls)
             ]
             
+            # Start a background task to update progress every 4 seconds
+            stop_updater = False
+            async def progress_updater():
+                nonlocal completed_segments, stop_updater
+                last_reported = -1
+                while not stop_updater:
+                    try:
+                        await asyncio.sleep(4)
+                        if stop_updater:
+                            break
+                        if total_segments > 0:
+                            pct = (completed_segments / total_segments) * 100
+                            progress_text = (
+                                f"📥 **جاري تحميل فيديو البث...**\n"
+                                f"📈 نسبة التقدم: `{pct:.1f}%`\n"
+                                f"📊 القطع المحملة: `{completed_segments}/{total_segments}`\n"
+                                f"[{make_progress_bar(pct)}]"
+                            )
+                            if completed_segments != last_reported:
+                                last_reported = completed_segments
+                                await status_message.edit_text(progress_text, parse_mode="Markdown")
+                    except Exception:
+                        pass
+            
+            updater_task = asyncio.create_task(progress_updater())
+            
             try:
-                await status_message.edit_text("📥 **جاري تحميل البث (توازي أقصى غير محدود)...**")
-            except Exception:
-                pass
+                start_time = time.time()
+                results = await asyncio.gather(*tasks)
+            finally:
+                stop_updater = True
+                updater_task.cancel()
                 
-            start_time = time.time()
-            results = await asyncio.gather(*tasks)
             elapsed = time.time() - start_time
             
             downloaded_bytes = 0
-            completed_segments = 0
+            completed_segments_count = 0
             
             # Open output file with 1MB buffer size to reduce disk write latency
             with open(target_path, "wb", buffering=1024*1024) as outfile:
@@ -317,7 +345,7 @@ async def download_hls(
                         return False
                     outfile.write(seg_data)
                     downloaded_bytes += len(seg_data)
-                    completed_segments += 1
+                    completed_segments_count += 1
             
             speed = downloaded_bytes / elapsed if elapsed > 0 else 0
             speed_mb = speed / (1024 * 1024)

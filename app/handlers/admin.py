@@ -117,6 +117,14 @@ async def handle_custom_thumbnail(message: Message, db_session: AsyncSession):
         await set_setting("custom_thumb_file_id", file_id)
         await delete_setting("custom_thumb_url")
         
+        # Clear local thumbnail cache file to trigger fresh download next time
+        import os
+        from config import config
+        local_path = config.DOWNLOAD_DIR / "custom_thumb.jpg"
+        if local_path.exists():
+            try: os.unlink(local_path)
+            except Exception: pass
+        
         logger.info(f"Custom background photo set by Admin {message.from_user.id} to file_id {file_id} via direct photo upload.")
         await status_msg.edit_text("✅ تم تحديث الخلفية الافتراضية للفيديوهات بنجاح من الصورة المرسلة!")
     except Exception as e:
@@ -184,6 +192,14 @@ async def handle_set_thumbnail_url(message: Message, db_session: AsyncSession):
         from app.utils.settings import set_setting, delete_setting
         await set_setting("custom_thumb_file_id", file_id)
         await delete_setting("custom_thumb_url")
+        
+        # Clear local thumbnail cache file to trigger fresh download next time
+        import os
+        from config import config
+        local_path = config.DOWNLOAD_DIR / "custom_thumb.jpg"
+        if local_path.exists():
+            try: os.unlink(local_path)
+            except Exception: pass
         
         logger.info(f"Custom video thumbnail URL {target_url} mapped to file_id {file_id} by Admin {message.from_user.id}")
         await status_msg.edit_text("✅ تم تحديث وتعيين الصورة المصغرة الافتراضية بنجاح عبر معرف التلغرام السحابي!")
@@ -722,6 +738,14 @@ async def process_admin_bg_photo(message: Message, db_session: AsyncSession, sta
         from app.utils.settings import set_setting, delete_setting
         await set_setting("custom_thumb_file_id", file_id)
         await delete_setting("custom_thumb_url")
+        
+        # Clear local thumbnail cache file to trigger fresh download next time
+        import os
+        from config import config
+        local_path = config.DOWNLOAD_DIR / "custom_thumb.jpg"
+        if local_path.exists():
+            try: os.unlink(local_path)
+            except Exception: pass
             
         await status_msg.edit_text("✅ تم تحديث خلفية الفيديوهات الافتراضية بنجاح.")
         await state.clear()
