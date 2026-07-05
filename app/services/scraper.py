@@ -129,7 +129,13 @@ def unpack_dean_edwards(packed_text: str) -> str:
         logger.exception("Error in process: failed to unpack Dean Edwards packed JS")
         return ""
 
-GLOBAL_COOKIE_JAR = aiohttp.CookieJar()
+GLOBAL_COOKIE_JAR: Optional[aiohttp.CookieJar] = None
+
+def get_global_cookie_jar() -> aiohttp.CookieJar:
+    global GLOBAL_COOKIE_JAR
+    if GLOBAL_COOKIE_JAR is None:
+        GLOBAL_COOKIE_JAR = aiohttp.CookieJar()
+    return GLOBAL_COOKIE_JAR
 
 WITANIME_DOMAINS = ["witanime.life", "witanime.pics", "witanime.com", "witanime.red", "witanime.site"]
 
@@ -256,7 +262,7 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
     ]
     
     connector = get_connector()
-    async with aiohttp.ClientSession(connector=connector, cookie_jar=GLOBAL_COOKIE_JAR) as session:
+    async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
         for idx, domain in enumerate(WITANIME_DOMAINS):
             if idx > 0:
                 await asyncio.sleep(1.5)  # Rate-limit mitigation delay
