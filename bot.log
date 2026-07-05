@@ -1103,3 +1103,55 @@ aiohttp_socks._errors.ProxyError: Username and password authentication failure
 [2026-07-05 17:44:50] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/anime/kimetsu-no-yaiba/
 [2026-07-05 17:44:50] [INFO] [bot] [scraper.py:435]: توقف جلب الصفحات عند الصفحة 1 بسبب محتوى فارغ
 [2026-07-05 17:44:50] [INFO] [bot] [scraper.py:546]: إجمالي الحلقات المستخرجة للأنمي kimetsu-no-yaiba: 0
+[2026-07-05 23:41:02] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 23:41:16] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 23:41:16] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'قاتل الشياطين' to 'Demon Slayer' using Google Translate API
+[2026-07-05 23:41:16] [INFO] [bot] [anilist.py:124]: Starting cloud index search for query: Demon Slayer (original: قاتل الشياطين)
+[2026-07-05 23:41:16] [INFO] [bot] [anilist.py:179]: Scraping page: https://graphql.anilist.co (Direct Media Query via aiohttp)
+[2026-07-05 23:41:17] [WARNING] [bot] [anilist.py:246]: Attempt 0 failed in search_anilist: Username and password authentication failure
+[2026-07-05 23:41:17] [INFO] [bot] [anilist.py:152]: Retrying search directly (bypassing proxy)...
+[2026-07-05 23:41:17] [INFO] [bot] [anilist.py:179]: Scraping page: https://graphql.anilist.co (Direct Media Query via aiohttp)
+[2026-07-05 23:41:17] [WARNING] [bot] [anilist.py:187]: AniList returned status 403
+[2026-07-05 23:41:17] [WARNING] [bot] [anilist.py:189]: AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.
+[2026-07-05 23:41:17] [INFO] [bot] [scraper.py:361]: Starting search for anime: قاتل الشياطين (original: قاتل الشياطين)
+[2026-07-05 23:41:18] [WARNING] [bot] [scraper.py:183]: Failed harvesting cookies from witanime.life: Username and password authentication failure
+[2026-07-05 23:41:18] [WARNING] [bot] [scraper.py:205]: Session get failed for https://witanime.life/?search_param=animes&s=%D9%82%D8%A7%D8%AA%D9%84%20%D8%A7%D9%84%D8%B4%D9%8A%D8%A7%D8%B7%D9%8A%D9%86: Username and password authentication failure
+[2026-07-05 23:41:18] [WARNING] [bot] [scraper.py:216]: HTTP status 0 fetching https://witanime.life/?search_param=animes&s=%D9%82%D8%A7%D8%AA%D9%84%20%D8%A7%D9%84%D8%B4%D9%8A%D8%A7%D8%B7%D9%8A%D9%86
+[2026-07-05 23:41:18] [WARNING] [bot] [scraper.py:205]: Session get failed for https://witanime.life/?s=%D9%82%D8%A7%D8%AA%D9%84%20%D8%A7%D9%84%D8%B4%D9%8A%D8%A7%D8%B7%D9%8A%D9%86: Username and password authentication failure
+[2026-07-05 23:41:18] [WARNING] [bot] [scraper.py:216]: HTTP status 0 fetching https://witanime.life/?s=%D9%82%D8%A7%D8%AA%D9%84%20%D8%A7%D9%84%D8%B4%D9%8A%D8%A7%D8%B7%D9%8A%D9%86
+[2026-07-05 23:41:20] [INFO] [bot] [scraper.py:384]: Primary search returned 0 results for 'قاتل الشياطين'. Attempting structural/translation fallbacks...
+[2026-07-05 23:41:20] [INFO] [bot] [scraper.py:415]: Trying fallback scraper search query: 'قاتل'
+[2026-07-05 23:41:21] [WARNING] [bot] [scraper.py:183]: Failed harvesting cookies from witanime.life: Username and password authentication failure
+[2026-07-05 23:41:21] [WARNING] [bot] [scraper.py:205]: Session get failed for https://witanime.life/?search_param=animes&s=%D9%82%D8%A7%D8%AA%D9%84: Username and password authentication failure
+[2026-07-05 23:41:21] [WARNING] [bot] [scraper.py:216]: HTTP status 0 fetching https://witanime.life/?search_param=animes&s=%D9%82%D8%A7%D8%AA%D9%84
+[2026-07-05 23:41:22] [WARNING] [bot] [scraper.py:205]: Session get failed for https://witanime.life/?s=%D9%82%D8%A7%D8%AA%D9%84: Username and password authentication failure
+[2026-07-05 23:41:22] [WARNING] [bot] [scraper.py:216]: HTTP status 0 fetching https://witanime.life/?s=%D9%82%D8%A7%D8%AA%D9%84
+[2026-07-05 23:41:41] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 23:41:41] [INFO] [bot] [anilist.py:22]: Translated Arabic query 'قاتل الشياطين' to 'Demon Slayer' using Google Translate API
+[2026-07-05 23:41:41] [INFO] [bot] [anilist.py:124]: Starting cloud index search for query: Demon Slayer (original: قاتل الشياطين)
+[2026-07-05 23:41:41] [INFO] [bot] [anilist.py:179]: Scraping page: https://graphql.anilist.co (Direct Media Query via aiohttp)
+[2026-07-05 23:41:41] [WARNING] [bot] [anilist.py:187]: AniList returned status 403
+[2026-07-05 23:41:41] [WARNING] [bot] [anilist.py:189]: AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.
+[2026-07-05 23:41:41] [INFO] [bot] [scraper.py:361]: Starting search for anime: قاتل الشياطين (original: قاتل الشياطين)
+[2026-07-05 23:41:46] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:41:50] [INFO] [bot] [scraper.py:384]: Primary search returned 0 results for 'قاتل الشياطين'. Attempting structural/translation fallbacks...
+[2026-07-05 23:41:50] [INFO] [bot] [scraper.py:415]: Trying fallback scraper search query: 'قاتل'
+[2026-07-05 23:41:53] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:42:38] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 23:42:38] [INFO] [bot] [scraper.py:361]: Starting search for anime: قاتل الشياطين (original: قاتل الشياطين)
+[2026-07-05 23:42:41] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:42:50] [INFO] [bot] [scraper.py:384]: Primary search returned 0 results for 'قاتل الشياطين'. Attempting structural/translation fallbacks...
+[2026-07-05 23:42:51] [INFO] [bot] [scraper.py:415]: Trying fallback scraper search query: 'قاتل'
+[2026-07-05 23:42:54] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:42:59] [INFO] [bot] [scraper.py:361]: Starting search for anime: قاتل (original: قاتل)
+[2026-07-05 23:42:59] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:43:06] [INFO] [bot] [scraper.py:384]: Primary search returned 0 results for 'قاتل'. Attempting structural/translation fallbacks...
+[2026-07-05 23:43:06] [INFO] [bot] [scraper.py:415]: Trying fallback scraper search query: 'القاتل'
+[2026-07-05 23:43:12] [WARNING] [bot] [scraper.py:183]: Failed harvesting cookies from witanime.life: 
+[2026-07-05 23:43:17] [INFO] [bot] [scraper.py:361]: Starting search for anime: الشياطين (original: الشياطين)
+[2026-07-05 23:43:21] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:43:24] [INFO] [bot] [scraper.py:384]: Primary search returned 0 results for 'الشياطين'. Attempting structural/translation fallbacks...
+[2026-07-05 23:43:25] [INFO] [bot] [scraper.py:361]: Starting search for anime: Kimetsu (original: Kimetsu)
+[2026-07-05 23:43:28] [INFO] [bot] [scraper.py:179]: Successfully harvested session cookies from witanime.life
+[2026-07-05 23:43:28] [INFO] [bot] [scraper.py:299]: Found 8 posts matching search query on witanime.life.
+[2026-07-05 23:43:28] [INFO] [bot] [scraper.py:321]: Resolved 8 unique anime series from witanime.life.

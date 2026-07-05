@@ -388,8 +388,8 @@ async def execute_queued_task(
         nav_markup = InlineKeyboardMarkup(inline_keyboard=[nav_row])
         
         bot_info = await bot.get_me()
-        chan = config.CHANNEL_USERNAME if config.CHANNEL_USERNAME else (f"@{bot_info.username}" if bot_info else "")
-        if chan and not chan.startswith("@"): chan = "@" + chan
+        chans_list = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in (config.CHANNEL_USERNAME or "").replace(",", " ").split() if c.strip()]
+        chan = " | ".join(chans_list) if chans_list else (f"@{bot_info.username}" if bot_info else "")
         
         size_caption = f"{cached_file_size:.1f} MB" if cached_file_size and cached_file_size > 0 else "سريع ⚡"
         caption = (
@@ -518,9 +518,8 @@ async def execute_queued_task(
     bot_username = f"@{bot_info.username}" if bot_info else ""
     
     size_mb = size / (1024 * 1024)
-    chan = config.CHANNEL_USERNAME if config.CHANNEL_USERNAME else (f"@{bot_info.username}" if bot_info else "")
-    if chan and not chan.startswith("@"):
-        chan = "@" + chan
+    chans_list = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in (config.CHANNEL_USERNAME or "").replace(",", " ").split() if c.strip()]
+    chan = " | ".join(chans_list) if chans_list else (f"@{bot_info.username}" if bot_info else "")
         
     caption = (
         f"🎬 **{anime_title}**\n"

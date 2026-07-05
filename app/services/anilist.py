@@ -170,8 +170,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                     else:
                         logger.warning(f"AniList returned status {response.status_code}")
                         if response.status_code == 403:
-                            logger.warning("AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.")
-                            return []
+                            logger.warning("AniList returned 403 Forbidden. Transitioning to Kitsu fallback.")
+                            break
                         raise Exception(f"AniList status {response.status_code}")
             else:
                 connector = get_connector() if attempt == 0 else None
@@ -186,8 +186,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                         else:
                             logger.warning(f"AniList returned status {response.status}")
                             if response.status == 403:
-                                logger.warning("AniList returned 403 Forbidden. Silently failing over to local WitAnime scraper.")
-                                return []
+                                logger.warning("AniList returned 403 Forbidden. Transitioning to Kitsu fallback.")
+                                break
                             raise Exception(f"AniList status {response.status}")
                                 
             # 2. If no direct media found, fallback to character search
@@ -214,8 +214,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                         else:
                             logger.warning(f"AniList character search returned status {response.status_code}")
                             if response.status_code == 403:
-                                logger.warning("AniList returned 403 Forbidden on character search. Silently failing over to local WitAnime scraper.")
-                                return []
+                                logger.warning("AniList returned 403 Forbidden on character search. Transitioning to Kitsu fallback.")
+                                break
                 else:
                     connector = get_connector() if attempt == 0 else None
                     async with aiohttp.ClientSession(connector=connector) as session:
@@ -234,21 +234,25 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                             else:
                                 logger.warning(f"AniList character search returned status {response.status}")
                                 if response.status == 403:
-                                    logger.warning("AniList returned 403 Forbidden on character search. Silently failing over to local WitAnime scraper.")
-                                    return []
+                                    logger.warning("AniList returned 403 Forbidden on character search. Transitioning to Kitsu fallback.")
+                                    break
                                 
-            logger.info(f"Cloud index search returned {len(results)} normalized titles.")
             if results:
-                SEARCH_MEMORY_CACHE[clean_key] = (time.time(), results)
-            return results
-            
+                break
         except Exception as e:
             logger.warning(f"Attempt {attempt} failed in search_anilist: {e}")
             if attempt == 0:
                 continue
             break
             
-    return []
+    if not results:
+        logger.warning(f"AniList search returned 0 results or was blocked for query: '{search_query}'. Transitioning to Kitsu fallback...")
+        results = await search_kitsu_fallback(search_query)
+        
+    logger.info(f"Cloud index search returned {len(results)} normalized titles.")
+    if results:
+        SEARCH_MEMORY_CACHE[clean_key] = (time.time(), results)
+    return results
 
 async def parse_media_node(media: dict[str, Any]) -> dict[str, Any]:
     """Extracts and normalizes media details from a GraphQL node."""
@@ -285,3 +289,80 @@ async def parse_media_node(media: dict[str, Any]) -> dict[str, Any]:
         "episodes_count": media.get("episodes"),
         "synonyms": synonyms,
     }
+
+async def search_kitsu_fallback(search_query: str) -> list[dict[str, Any]]:
+    """
+    Highly resilient fallback search using Kitsu.io API when AniList is blocked by Cloudflare (403 Forbidden).
+    Translates, resolves, and returns results matching AniList search schema.
+    """
+    logger.info(f"Executing Kitsu fallback search for: {search_query}")
+    url = f"https://kitsu.io/api/edge/anime?filter[text]={quote(search_query)}&page[limit]=5"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/vnd.api+json",
+        "Content-Type": "application/vnd.api+json"
+    }
+    results = []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=10) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    media_list = data.get("data", [])
+                    for m in media_list:
+                        m_id = m.get("id")
+                        attrs = m.get("attributes", {})
+                        
+                        # Generate a unique negative ID based on Kitsu ID to avoid conflicting with actual AniList IDs
+                        kitsu_id = -abs(int(m_id) if str(m_id).isdigit() else hash(str(m_id)))
+                        
+                        canonical_title = attrs.get("canonicalTitle") or "Unknown Title"
+                        titles = attrs.get("titles", {}) or {}
+                        romaji = titles.get("en_jp") or canonical_title
+                        english = titles.get("en")
+                        
+                        # Description
+                        description = attrs.get("synopsis") or attrs.get("description") or ""
+                        if description:
+                            import re
+                            import html
+                            description = re.sub(r'<[^>]*>', '', description)
+                            description = html.unescape(description)
+                            
+                        # Image URL
+                        poster_image = attrs.get("posterImage", {}) or {}
+                        image_url = poster_image.get("large") or poster_image.get("original") or poster_image.get("medium")
+                        
+                        # Duration
+                        raw_duration = attrs.get("episodeLength")
+                        duration = f"{raw_duration} دقيقة" if raw_duration else None
+                        
+                        # Synonyms
+                        synonyms = attrs.get("abbreviatedTitles", []) or []
+                        synonyms = [s.strip() for s in synonyms if s and s.strip()]
+                        
+                        # Add romaji and English/canonical titles as alternative synonyms if they differ
+                        if romaji and romaji not in synonyms:
+                            synonyms.append(romaji)
+                        if canonical_title and canonical_title not in synonyms:
+                            synonyms.append(canonical_title)
+                        if english and english not in synonyms:
+                            synonyms.append(english)
+                            
+                        results.append({
+                            "anilist_id": kitsu_id,
+                            "title_english": english or canonical_title,
+                            "title_romaji": romaji,
+                            "description": description,
+                            "image_url": image_url,
+                            "duration": duration,
+                            "episodes_count": attrs.get("episodeCount"),
+                            "synonyms": list(set(synonyms)),
+                        })
+                    logger.info(f"Kitsu fallback search returned {len(results)} normalized titles.")
+                else:
+                    logger.warning(f"Kitsu fallback search failed with status {resp.status}")
+    except Exception as e:
+        logger.exception(f"Error executing Kitsu fallback search: {e}")
+        
+    return results

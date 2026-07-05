@@ -99,27 +99,35 @@ class SubscriptionMiddleware(BaseMiddleware):
         if isinstance(inner_event, CallbackQuery) and inner_event.data == "check_sub":
             return await handler(event, data)
 
-        # Check membership in the channel
-        try:
-            member = await bot.get_chat_member(chat_id=config.CHANNEL_USERNAME, user_id=user.id)
-            if member.status in ("member", "administrator", "creator"):
-                return await handler(event, data)
-        except Exception as e:
-            # If checking fails (e.g. bot not in channel), do not block the user to avoid complete outages
-            from app.utils.logging_config import logger
-            logger.warning(f"Failed to check channel membership for user {user.id} in {config.CHANNEL_USERNAME}: {e}")
+        # Check membership in all channels
+        channels_to_check = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in config.CHANNEL_USERNAME.replace(",", " ").split() if c.strip()]
+        
+        unsubscribed_channels = []
+        for chan in channels_to_check:
+            try:
+                member = await bot.get_chat_member(chat_id=chan, user_id=user.id)
+                if member.status not in ("member", "administrator", "creator"):
+                    unsubscribed_channels.append(chan)
+            except Exception as e:
+                # If checking fails for a specific channel (e.g. bot is not in it or invalid name),
+                # do not block the user for this channel to prevent complete outages
+                from app.utils.logging_config import logger
+                logger.warning(f"Failed to check channel membership for user {user.id} in {chan}: {e}")
+                
+        if not unsubscribed_channels:
             return await handler(event, data)
             
-        # If user is not member, restrict access and prompt to join
-        channel_link = f"https://t.me/{config.CHANNEL_USERNAME.lstrip('@')}"
+        # If user is not member of all channels, restrict access and prompt to join
         text = (
-            f"⚠️ <b>عذراً، يجب عليك الاشتراك في القناة أولاً لتتمكن من استخدام البوت!</b>\n\n"
-            f"يرجى الانضمام إلى القناة الرسمية أدناه، ثم اضغط على زر التحقق 👇"
+            f"⚠️ <b>عذراً، يجب عليك الاشتراك في القنوات التالية أولاً لتتمكن من استخدام البوت!</b>\n\n"
+            f"يرجى الانضمام إلى القنوات الرسمية أدناه، ثم اضغط على زر التحقق 👇"
         )
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 اشترك في القناة الرسمية", url=channel_link)],
-            [InlineKeyboardButton(text="✅ تحقق من الاشتراك", callback_data="check_sub")]
-        ])
+        markup_buttons = []
+        for ch in unsubscribed_channels:
+            channel_link = f"https://t.me/{ch.lstrip('@')}"
+            markup_buttons.append([InlineKeyboardButton(text=f"📢 اشترك في القناة: {ch}", url=channel_link)])
+        markup_buttons.append([InlineKeyboardButton(text="✅ تحقق من الاشتراك", callback_data="check_sub")])
+        markup = InlineKeyboardMarkup(inline_keyboard=markup_buttons)
         
         if isinstance(inner_event, Message):
             await inner_event.answer(text, reply_markup=markup, parse_mode="HTML")

@@ -452,23 +452,36 @@ async def cmd_post_episode(message: Message, db_session: AsyncSession):
             [InlineKeyboardButton(text="📥 تحميل ومشاهدة الحلقة", url=deep_link_url)]
         ])
         
-        if image_url:
-            await message.bot.send_photo(
-                chat_id=config.CHANNEL_USERNAME,
-                photo=image_url,
-                caption=caption,
-                reply_markup=markup,
-                parse_mode="HTML"
-            )
-        else:
-            await message.bot.send_message(
-                chat_id=config.CHANNEL_USERNAME,
-                text=caption,
-                reply_markup=markup,
-                parse_mode="HTML"
-            )
-            
-        await status_msg.edit_text(f"✅ تم نشر الحلقة بنجاح في القناة: {config.CHANNEL_USERNAME}")
+        channel_list = [c.strip() for c in config.CHANNEL_USERNAME.replace(",", " ").split() if c.strip()]
+        success_channels = []
+        fail_channels = []
+        
+        for chan in channel_list:
+            try:
+                if image_url:
+                    await message.bot.send_photo(
+                        chat_id=chan,
+                        photo=image_url,
+                        caption=caption,
+                        reply_markup=markup,
+                        parse_mode="HTML"
+                    )
+                else:
+                    await message.bot.send_message(
+                        chat_id=chan,
+                        text=caption,
+                        reply_markup=markup,
+                        parse_mode="HTML"
+                    )
+                success_channels.append(chan)
+            except Exception as ex:
+                logger.warning(f"Failed to post episode to channel {chan}: {ex}")
+                fail_channels.append(f"{chan} ({ex})")
+                
+        res_text = f"✅ تم نشر الحلقة بنجاح في القنوات: {', '.join(success_channels)}"
+        if fail_channels:
+            res_text += f"\n⚠️ فشل النشر في: {', '.join(fail_channels)}"
+        await status_msg.edit_text(res_text)
         
     except Exception as e:
         logger.exception("Error broadcasting episode to channel")
@@ -528,23 +541,36 @@ async def cmd_broadcast_ep(message: Message, db_session: AsyncSession):
             [InlineKeyboardButton(text="شاهد الآن 📺", url=link)]
         ])
         
-        if image_url:
-            await message.bot.send_photo(
-                chat_id=config.CHANNEL_USERNAME,
-                photo=image_url,
-                caption=caption,
-                reply_markup=markup,
-                parse_mode="HTML"
-            )
-        else:
-            await message.bot.send_message(
-                chat_id=config.CHANNEL_USERNAME,
-                text=caption,
-                reply_markup=markup,
-                parse_mode="HTML"
-            )
-            
-        await status_msg.edit_text(f"✅ تم البث ونشر الحلقة بنجاح في القناة: {config.CHANNEL_USERNAME}")
+        channel_list = [c.strip() for c in config.CHANNEL_USERNAME.replace(",", " ").split() if c.strip()]
+        success_channels = []
+        fail_channels = []
+        
+        for chan in channel_list:
+            try:
+                if image_url:
+                    await message.bot.send_photo(
+                        chat_id=chan,
+                        photo=image_url,
+                        caption=caption,
+                        reply_markup=markup,
+                        parse_mode="HTML"
+                    )
+                else:
+                    await message.bot.send_message(
+                        chat_id=chan,
+                        text=caption,
+                        reply_markup=markup,
+                        parse_mode="HTML"
+                    )
+                success_channels.append(chan)
+            except Exception as ex:
+                logger.warning(f"Failed to broadcast episode via /broadcast_ep to channel {chan}: {ex}")
+                fail_channels.append(f"{chan} ({ex})")
+                
+        res_text = f"✅ تم البث ونشر الحلقة بنجاح في القنوات: {', '.join(success_channels)}"
+        if fail_channels:
+            res_text += f"\n⚠️ فشل النشر في: {', '.join(fail_channels)}"
+        await status_msg.edit_text(res_text)
     except Exception as e:
         logger.exception("Error broadcasting episode via /broadcast_ep")
         import html
@@ -1296,15 +1322,22 @@ async def process_admin_channel(message: Message, db_session: AsyncSession, stat
         return
         
     text = message.text.strip()
-    if not text.startswith("@"):
-        await message.answer("❌ معرف غير صالح. يجب أن يبدأ المعرف بـ `@` مثل: `@botanmie_channel`. يرجى المحاولة مجدداً.")
+    channels = [c.strip() for c in text.replace(",", " ").split() if c.strip()]
+    if not channels:
+        await message.answer("❌ يرجى إدخال معرف قناة صالح يبدأ بـ `@`.")
         return
         
-    config.CHANNEL_USERNAME = text
+    for ch in channels:
+        if not ch.startswith("@"):
+            await message.answer(f"❌ معرف غير صالح: <code>{ch}</code>.\nيجب أن تبدأ كافة المعرفات بـ `@` (مثال: `@channel1, @channel2`). يرجى المحاولة مجدداً.", parse_mode="HTML")
+            return
+            
+    final_val = ", ".join(channels)
+    config.CHANNEL_USERNAME = final_val
     from app.utils.settings import set_setting
-    await set_setting("channel_username", text)
+    await set_setting("channel_username", final_val)
     await state.clear()
-    await message.answer(f"✅ تم تحديث قناة الاشتراك الإجباري بنجاح إلى: <b>{text}</b>", parse_mode="HTML")
+    await message.answer(f"✅ تم تحديث قنوات الاشتراك الإجباري بنجاح إلى:\n<b>{final_val}</b>", parse_mode="HTML")
 
 
 @router.callback_query(F.data == "admin_set_bg")

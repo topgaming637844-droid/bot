@@ -251,26 +251,27 @@ async def handle_check_subscription(callback: CallbackQuery, db_session: AsyncSe
         await send_welcome_panel(callback.message, db_session)
         return
         
-    try:
-        member = await bot.get_chat_member(chat_id=config.CHANNEL_USERNAME, user_id=user_id)
-        if member.status in ("member", "administrator", "creator"):
-            await safe_answer(callback, "✅ تم التحقق بنجاح! شكراً لاشتراكك.", show_alert=True)
-            try:
-                await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
-            except Exception:
-                pass
-            await send_welcome_panel(callback.message, db_session)
-        else:
-            await safe_answer(callback, "❌ لم تشترك في القناة بعد! يرجى الاشتراك أولاً.", show_alert=True)
-    except Exception:
-        from app.utils.logging_config import logger
-        logger.warning(f"Error checking sub in callback for user {user_id}")
-        await safe_answer(callback, "✅ تم التفعيل بنجاح!")
+    channels_to_check = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in config.CHANNEL_USERNAME.replace(",", " ").split() if c.strip()]
+    
+    unsubscribed = []
+    for chan in channels_to_check:
+        try:
+            member = await bot.get_chat_member(chat_id=chan, user_id=user_id)
+            if member.status not in ("member", "administrator", "creator"):
+                unsubscribed.append(chan)
+        except Exception as e:
+            from app.utils.logging_config import logger
+            logger.warning(f"Error checking sub in callback for user {user_id} in {chan}: {e}")
+            
+    if not unsubscribed:
+        await safe_answer(callback, "✅ تم التحقق بنجاح! شكراً لاشتراكك.", show_alert=True)
         try:
             await callback.bot.delete_message(chat_id=callback.message.chat.id, message_id=callback.message.message_id)
         except Exception:
             pass
         await send_welcome_panel(callback.message, db_session)
+    else:
+        await safe_answer(callback, "❌ لم تشترك في كافة القنوات المطلوبة بعد! يرجى الاشتراك أولاً.", show_alert=True)
 
 @router.callback_query(F.data == "menu_search")
 async def handle_menu_search(callback: CallbackQuery):

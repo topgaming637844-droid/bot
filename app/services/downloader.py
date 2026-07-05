@@ -549,14 +549,31 @@ async def download_file(
     if ".m3u8" in url or "master" in url or "stream" in url:
         return await download_hls(url, target_path, status_message, quality)
 
-    # Use multipart parallel downloader for direct files to bypass speed caps
+    # Use multipart parallel downloader for direct files to bypass speed caps ONLY if Accept-Ranges is supported
     if total_size > 5 * 1024 * 1024:
-        logger.info(f"Using multipart downloader for direct URL: {url}")
-        num_parts = MULTIPART_THREADS
-        success = await download_multipart(url, target_path, status_message, total_size, quality, num_parts=num_parts)
-        if success:
-            return True
-        logger.warning("Multipart download failed or blocked by host CDN. Falling back to high-speed single-stream direct download...")
+        supports_ranges = False
+        try:
+            connector = get_session_connector(limit=10)
+            referer = get_referer_for_url(url)
+            headers = {"User-Agent": CHROME_USER_AGENT, "Referer": referer}
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.head(url, headers=headers, allow_redirects=True, ssl=False, timeout=8) as head_resp:
+                    if head_resp.status in [200, 206]:
+                        accept_ranges = head_resp.headers.get("Accept-Ranges", "").lower()
+                        if "bytes" in accept_ranges:
+                            supports_ranges = True
+        except Exception:
+            pass
+
+        if supports_ranges:
+            logger.info(f"Using multipart downloader for direct URL: {url}")
+            num_parts = MULTIPART_THREADS
+            success = await download_multipart(url, target_path, status_message, total_size, quality, num_parts=num_parts)
+            if success:
+                return True
+            logger.warning("Multipart download failed or blocked by host CDN. Falling back to high-speed single-stream direct download...")
+        else:
+            logger.info(f"Server does not support Accept-Ranges (or head request failed). Skipping multipart downloader for: {url}")
 
     # Single-stream direct chunked streaming downloader
     logger.info(f"Downloading static monolithic video file via chunked streaming context: {url}")
