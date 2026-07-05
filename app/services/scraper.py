@@ -281,9 +281,8 @@ async def _run_scraper_search(session: Any, title: str, search_queries: List[str
             try:
                 html = await get_html(search_url, session)
                 if html == "STATUS_403_FORBIDDEN":
-                    logger.warning(f"Domain {domain} returned 403 Forbidden. Aborting further domain query loops.")
-                    is_403_blocked = True
-                    break
+                    logger.warning(f"Domain {domain} returned 403 Forbidden. Aborting search due to Cloudflare block.")
+                    raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
                 if not html:
                     continue
                 soup = BeautifulSoup(html, "html.parser")
@@ -400,9 +399,13 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
             test_u = f"https://{domain}/anime/{anime_slug}/"
             try:
                 async with session.get(test_u, headers=get_browser_headers(test_u), ssl=False, timeout=8) as r:
+                    if r.status == 403:
+                        raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
                     if r.status == 200:
                         active_domain = domain
                         break
+            except ScraperError:
+                raise
             except Exception:
                 pass
                 
@@ -416,10 +419,14 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
             try:
                 headers = get_browser_headers(url)
                 async with session.get(url, headers=headers, ssl=False, timeout=15) as response:
+                    if response.status == 403:
+                        raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
                     if response.status != 200:
                         logger.info(f"توقف جلب الصفحات عند الصفحة {page_num} بسبب رمز الحالة: {response.status}")
                         break
                     html = await response.text()
+            except ScraperError:
+                raise
             except Exception as e:
                 logger.warning(f"فشل الاتصال بالصفحة {page_num}: {e}")
                 break

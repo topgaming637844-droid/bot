@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.filters import StateFilter
 from app.database.models import SearchCache, UserFavorites, EpisodeCache
 from app.services.anilist import search_anilist
-from app.services.scraper import search_anime_scraper, get_episodes_scraper
+from app.services.scraper import search_anime_scraper, get_episodes_scraper, ScraperError
 from app.utils.logging_config import logger
 
 router = Router(name="search")
@@ -175,103 +175,128 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
         except Exception:
             pass
     
-    anime_slug = None
-    if cache_entry.title_romaji.startswith("WITANIME:"):
-        anime_slug = cache_entry.title_romaji.split(":", 1)[1]
-    else:
-        # Check if already cached and not expired
-        stmt_eps = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
-        res_eps = await db_session.execute(stmt_eps)
-        cached_episodes = res_eps.scalars().all()
-        
-        if cached_episodes and (datetime.now(timezone.utc) - cached_episodes[0].created_at) < timedelta(hours=CACHE_EXPIRATION_HOURS):
-            # Hit cache
-            pass
+    try:
+        anime_slug = None
+        if cache_entry.title_romaji.startswith("WITANIME:"):
+            anime_slug = cache_entry.title_romaji.split(":", 1)[1]
         else:
-            # Need to search slug on scraper
-            from app.utils.match import get_best_slug_match, sanitize_search_query
-            search_title = cache_entry.title_romaji or cache_entry.title_english
-            cleaned_title = sanitize_search_query(search_title)
+            # Check if already cached and not expired
+            stmt_eps = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
+            res_eps = await db_session.execute(stmt_eps)
+            cached_episodes = res_eps.scalars().all()
             
-            matched_query = cleaned_title
-            scraper_results = await search_anime_scraper(cleaned_title)
-            
-            if not scraper_results and cache_entry.title_english:
-                cleaned_eng = sanitize_search_query(cache_entry.title_english)
-                if cleaned_eng != cleaned_title:
-                    matched_query = cleaned_eng
-                    scraper_results = await search_anime_scraper(cleaned_eng)
+            if cached_episodes and (datetime.now(timezone.utc) - cached_episodes[0].created_at) < timedelta(hours=CACHE_EXPIRATION_HOURS):
+                # Hit cache
+                pass
+            else:
+                # Need to search slug on scraper
+                from app.utils.match import get_best_slug_match, sanitize_search_query
+                search_title = cache_entry.title_romaji or cache_entry.title_english
+                cleaned_title = sanitize_search_query(search_title)
+                
+                matched_query = cleaned_title
+                scraper_results = await search_anime_scraper(cleaned_title)
+                
+                if not scraper_results and cache_entry.title_english:
+                    cleaned_eng = sanitize_search_query(cache_entry.title_english)
+                    if cleaned_eng != cleaned_title:
+                        matched_query = cleaned_eng
+                        scraper_results = await search_anime_scraper(cleaned_eng)
 
-            # Fallback to synonyms from AniList if primary titles returned 0 results
-            if not scraper_results and cache_entry.synonyms:
-                for syn in cache_entry.synonyms:
-                    cleaned_syn = sanitize_search_query(syn)
-                    if cleaned_syn and cleaned_syn != cleaned_title:
-                        logger.info(f"محاولة البحث بالمرادف المصاحب (Synonym): '{cleaned_syn}'")
-                        scraper_results = await search_anime_scraper(cleaned_syn)
-                        if scraper_results:
-                            matched_query = cleaned_syn
-                            break
+                # Fallback to synonyms from AniList if primary titles returned 0 results
+                if not scraper_results and cache_entry.synonyms:
+                    for syn in cache_entry.synonyms:
+                        cleaned_syn = sanitize_search_query(syn)
+                        if cleaned_syn and cleaned_syn != cleaned_title:
+                            logger.info(f"محاولة البحث بالمرادف المصاحب (Synonym): '{cleaned_syn}'")
+                            scraper_results = await search_anime_scraper(cleaned_syn)
+                            if scraper_results:
+                                matched_query = cleaned_syn
+                                break
+                        
+                if not scraper_results:
+                    try:
+                        await callback.message.edit_text("❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
+                    except TelegramBadRequest:
+                        try:
+                            await callback.message.edit_caption(caption="❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
+                        except Exception:
+                            pass
+                    return
                     
-            if not scraper_results:
+                anime_slug = get_best_slug_match(scraper_results, matched_query)
+
+        scraped_data = None
+        if anime_slug:
+            # Scrape and cache episodes
+            scraped_data = await get_episodes_scraper(anime_slug)
+            if not scraped_data or not scraped_data.get("episodes"):
                 try:
-                    await callback.message.edit_text("❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
+                    await callback.message.edit_text("❌ فشل في جلب قائمة الحلقات من سيرفر البث المساعد.")
                 except TelegramBadRequest:
                     try:
-                        await callback.message.edit_caption(caption="❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
+                        await callback.message.edit_caption(caption="❌ فشل في جلب قائمة الحلقات من سيرفر البث المساعد.")
                     except Exception:
                         pass
                 return
                 
-            anime_slug = get_best_slug_match(scraper_results, matched_query)
-
-    scraped_data = None
-    if anime_slug:
-        # Scrape and cache episodes
-        scraped_data = await get_episodes_scraper(anime_slug)
-        if not scraped_data or not scraped_data.get("episodes"):
-            try:
-                await callback.message.edit_text("❌ فشل في جلب قائمة الحلقات من سيرفر البث المساعد.")
-            except TelegramBadRequest:
-                try:
-                    await callback.message.edit_caption(caption="❌ فشل في جلب قائمة الحلقات من سيرفر البث المساعد.")
-                except Exception:
-                    pass
-            return
+            episodes_list = scraped_data["episodes"]
             
-        episodes_list = scraped_data["episodes"]
-        
-        # If database cache lacks high-res details, update them
-        updated = False
-        if scraped_data.get("poster_url") and (not cache_entry.image_url or "default" in cache_entry.image_url):
-            cache_entry.image_url = scraped_data["poster_url"]
-            updated = True
-        if scraped_data.get("description") and scraped_data["description"] != "لا يوجد":
-            cache_entry.description = scraped_data["description"]
-            updated = True
-        if scraped_data.get("duration"):
-            cache_entry.duration = scraped_data["duration"]
-            updated = True
-        if updated:
-            db_session.add(cache_entry)
+            # If database cache lacks high-res details, update them
+            updated = False
+            if scraped_data.get("poster_url") and (not cache_entry.image_url or "default" in cache_entry.image_url):
+                cache_entry.image_url = scraped_data["poster_url"]
+                updated = True
+            if scraped_data.get("description") and scraped_data["description"] != "لا يوجد":
+                cache_entry.description = scraped_data["description"]
+                updated = True
+            if scraped_data.get("duration"):
+                cache_entry.duration = scraped_data["duration"]
+                updated = True
+            if updated:
+                db_session.add(cache_entry)
+                await db_session.commit()
+                
+            # Delete old cache
+            stmt_del = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
+            res_del = await db_session.execute(stmt_del)
+            old_eps = res_del.scalars().all()
+            for old_ep in old_eps:
+                await db_session.delete(old_ep)
+                
+            # Add new episodes to cache
+            for ep in episodes_list:
+                db_ep = EpisodeCache(
+                    anilist_id=anilist_id,
+                    ep_number=ep["ep_number"],
+                    play_url=ep["play_url"]
+                )
+                db_session.add(db_ep)
             await db_session.commit()
-            
-        # Delete old cache
-        stmt_del = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
-        res_del = await db_session.execute(stmt_del)
-        old_eps = res_del.scalars().all()
-        for old_ep in old_eps:
-            await db_session.delete(old_ep)
-            
-        # Add new episodes to cache
-        for ep in episodes_list:
-            db_ep = EpisodeCache(
-                anilist_id=anilist_id,
-                ep_number=ep["ep_number"],
-                play_url=ep["play_url"]
-            )
-            db_session.add(db_ep)
-        await db_session.commit()
+    except ScraperError as se:
+        logger.warning(f"Scraper error for anilist_id={anilist_id}: {se}")
+        msg = "❌ فشل جلب الحلقات من خادم البث المساعد."
+        if "CLOUDFLARE_BLOCK" in str(se):
+            msg = "⚠️ عذراً، خادم البث المساعد محمي بحماية Cloudflare حالياً وتتحقق منها خوارزميات المنع. يرجى مراجعة إعدادات البروكسي أو المحاولة لاحقاً."
+        try:
+            await callback.message.edit_text(msg)
+        except TelegramBadRequest:
+            try:
+                await callback.message.edit_caption(caption=msg)
+            except Exception:
+                pass
+        return
+    except Exception as e:
+        logger.exception(f"Unexpected error fetching episodes for anilist_id={anilist_id}")
+        msg = "❌ حدث خطأ غير متوقع أثناء جلب الحلقات. يرجى المحاولة لاحقاً."
+        try:
+            await callback.message.edit_text(msg)
+        except TelegramBadRequest:
+            try:
+                await callback.message.edit_caption(caption=msg)
+            except Exception:
+                pass
+        return
 
     # Load final episode list from DB
     stmt_eps = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
