@@ -1,5 +1,5 @@
 import aiohttp
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 from aiohttp_socks import ProxyConnector
 from urllib.parse import quote
 from config import config
@@ -47,7 +47,7 @@ async def translate_to_arabic(text: str) -> Optional[str]:
 
 import time
 
-SEARCH_MEMORY_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+SEARCH_MEMORY_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 CACHE_TTL = 3600  # 1 hour in-memory cache for 0-second instant search resolution
 
 # Optimized slim GraphQL query for searching anime directly
@@ -105,7 +105,7 @@ def get_connector() -> Optional[ProxyConnector]:
             logger.exception("Error in process while initializing proxy connector")
     return None
 
-async def search_anilist(query: str) -> List[Dict[str, Any]]:
+async def search_anilist(query: str) -> list[dict[str, Any]]:
     """
     Search Cloud Index API.
     Resolves typos, Franco-Arabic, and character names into official titles with zero-second memory cache.
@@ -127,7 +127,7 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
     for attempt in range(2):
         connector = get_connector()
         if attempt > 0:
-            logger.info("Retrying AniList search directly (bypassing proxy)...")
+            logger.info("Retrying search directly (bypassing proxy)...")
             
         payload = {
             "query": MEDIA_QUERY,
@@ -146,13 +146,13 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
                             for media in media_list:
                                 results.append(await parse_media_node(media))
                         else:
-                            logger.error(f"Error in process: AniList media query returned status {response.status}")
+                            logger.error(f"Error in process: media query returned status {response.status}")
                 except Exception as e:
                     if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
-                        logger.warning(f"Proxy failure during AniList media query: {e}. Disabling proxy.")
+                        logger.warning(f"Proxy failure during media query: {e}. Disabling proxy.")
                         config.PROXY_URL = None
                         raise e
-                    logger.exception("Error in process while querying AniList media API")
+                    logger.exception("Error in process while querying media API")
                     
                 # 2. If no direct media found, fallback to character search
                 if not results:
@@ -175,13 +175,13 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
                                             results.append(await parse_media_node(media))
                                             seen_ids.add(media["id"])
                             else:
-                                logger.error(f"Error in process: AniList character query returned status {response.status}")
+                                logger.error(f"Error in process: character query returned status {response.status}")
                     except Exception as e:
                         if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
-                            logger.warning(f"Proxy failure during AniList character query: {e}. Disabling proxy.")
+                            logger.warning(f"Proxy failure during character query: {e}. Disabling proxy.")
                             config.PROXY_URL = None
                             raise e
-                        logger.exception("Error in process while querying AniList characters API")
+                        logger.exception("Error in process while querying characters API")
                         
             logger.info(f"Cloud index search returned {len(results)} normalized titles.")
             if results:
@@ -195,7 +195,7 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
             
     return []
 
-async def parse_media_node(media: Dict[str, Any]) -> Dict[str, Any]:
+async def parse_media_node(media: dict[str, Any]) -> dict[str, Any]:
     """Extracts and normalizes media details from a GraphQL node."""
     title_data = media.get("title", {})
     title_english = title_data.get("english")
