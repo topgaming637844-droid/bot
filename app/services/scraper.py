@@ -12,7 +12,19 @@ from config import config
 from app.utils.user_agents import get_random_user_agent
 from app.services.anilist import get_connector
 from app.utils.logging_config import logger
+from playwright.async_api import async_playwright
 
+async def get_html_headless(url: str) -> str:
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True, args=['--disable-blink-features=AutomationControlled'])
+            page = await browser.new_page()
+            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            html = await page.content()
+            await browser.close()
+            return html
+    except Exception:
+        return ""
 class ScraperError(Exception):
     """Base exception for scraping operations."""
     pass
