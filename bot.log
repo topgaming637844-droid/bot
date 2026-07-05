@@ -916,3 +916,14 @@ aiohttp_socks._errors.ProxyError: Username and password authentication failure
 [2026-07-05 04:22:42] [INFO] [bot] [scraper.py:366]: Decoded 28 episodes from encodedEpisodeData
 [2026-07-05 04:22:42] [INFO] [bot] [scraper.py:407]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
 [2026-07-05 04:22:42] [INFO] [bot] [scraper.py:420]: إجمالي الحلقات المستخرجة للأنمي sousou-no-frieren: 28
+[2026-07-05 16:54:23] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:54:35] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:54:46] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:54:58] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:55:09] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:55:21] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:55:34] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:55:45] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:56:57] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:57:23] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 16:58:00] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.

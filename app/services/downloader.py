@@ -15,6 +15,9 @@ from app.services.anilist import get_connector
 from app.utils.logging_config import logger
 from app.services.scraper import get_browser_headers
 
+CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+
+
 class AdaptiveSemaphore:
     def __init__(self, initial_limit: int):
         self.limit = initial_limit
@@ -129,7 +132,7 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
         return 0
 
     referer = get_referer_for_url(url)
-    headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+    headers = {"User-Agent": CHROME_USER_AGENT, "Referer": referer}
     
     # 1. Try HEAD request to extract Content-Length
     try:
@@ -394,7 +397,7 @@ async def download_multipart(
     """Downloads a direct file in parallel parts using HTTP Range requests to maximize speed."""
     connector = get_session_connector(limit=0)
     referer = get_referer_for_url(url)
-    headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+    headers = {"User-Agent": CHROME_USER_AGENT, "Referer": referer}
     
     keep_alive_headers = {
         "Connection": "keep-alive",
@@ -541,7 +544,7 @@ async def download_file(
 
     connector = get_session_connector(limit=0)
     referer = get_referer_for_url(url)
-    headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+    headers = {"User-Agent": CHROME_USER_AGENT, "Referer": referer}
     
     keep_alive_headers = {
         "Connection": "keep-alive",

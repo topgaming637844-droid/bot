@@ -108,10 +108,8 @@ def sanitize_search_query(title: str) -> str:
     if not title:
         return ""
     
-    # Split by colons (:) or dashes ( - ) and take only the first part
-    for splitter in [":", " - "]:
-        if splitter in title:
-            title = title.split(splitter)[0]
+    # Replace colons, dashes and slashes with spaces to keep full title keywords
+    title = title.replace(":", " ").replace("-", " ").replace("/", " ")
             
     # Remove special bullets like ● and symbols, punctuation
     title = re.sub(r"[●⚫⚪■□◆◇▲▼★☆✦✧♦♣♠♥🃏#@$^*&_+|~`{}[\];\"'<>]", " ", title)
