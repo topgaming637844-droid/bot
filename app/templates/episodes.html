@@ -104,10 +104,12 @@
                     })
                 });
                 
-                if (response.ok) {
+                const data = await response.json();
+                if (response.ok && data.status === "ok") {
                     webapp.close();
                 } else {
-                    alert("حدث خطأ أثناء إرسال اختيارك. يرجى المحاولة مجدداً.");
+                    const msg = (data && data.message) ? data.message : "سيرفرات هذا الأنمي القديم خاضعة للتحديث حالياً، يرجى تجربة جودة أخرى أو أنمي آخر.";
+                    alert(msg);
                     document.getElementById('loader').style.display = 'none';
                     document.getElementById('grid').style.pointerEvents = 'auto';
                 }

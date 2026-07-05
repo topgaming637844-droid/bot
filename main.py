@@ -273,7 +273,7 @@ async def api_select_episode(payload: WebAppEpisodePayload):
             
             # Trigger quality prompt in Telegram chat
             from app.handlers.download import prompt_quality_selection
-            await prompt_quality_selection(
+            success = await prompt_quality_selection(
                 bot=bot,
                 chat_id=payload.user_id,
                 anilist_id=payload.anilist_id,
@@ -283,6 +283,9 @@ async def api_select_episode(payload: WebAppEpisodePayload):
                 duration=duration,
                 db_session=db_session
             )
+            
+            if not success:
+                return {"status": "error", "message": "سيرفرات هذا الأنمي القديم خاضعة للتحديث حالياً، يرجى تجربة جودة أخرى أو أنمي آخر."}
             
         return {"status": "ok"}
     except Exception as e:

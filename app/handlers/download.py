@@ -217,13 +217,13 @@ async def prompt_quality_selection(
         
         if not scraped_links:
             try:
-                await bot.edit_message_text("❌ فشل في استخراج روابط التحميل لهذه الحلقة. يرجى المحاولة لاحقاً.", chat_id=chat_id, message_id=status_msg_id)
+                await bot.edit_message_text("⚠️ سيرفرات هذا الأنمي خاضعة للتحديث حالياً، يرجى تجربة جودة أخرى أو أنمي آخر.", chat_id=chat_id, message_id=status_msg_id)
             except TelegramBadRequest:
                 try:
-                    await bot.edit_message_caption(chat_id=chat_id, message_id=status_msg_id, caption="❌ فشل في استخراج روابط التحميل لهذه الحلقة. يرجى المحاولة لاحقاً.")
+                    await bot.edit_message_caption(chat_id=chat_id, message_id=status_msg_id, caption="⚠️ سيرفرات هذا الأنمي خاضعة للتحديث حالياً، يرجى تجربة جودة أخرى أو أنمي آخر.")
                 except Exception:
                     pass
-            return
+            return False
             
         qualities = scraped_links
         if cached_dl:
@@ -296,7 +296,7 @@ async def prompt_quality_selection(
                         reply_markup=markup,
                         parse_mode="Markdown"
                     )
-                    return
+                    return True
                 else:
                     raise
         except Exception:
@@ -308,6 +308,7 @@ async def prompt_quality_selection(
         reply_markup=markup,
         parse_mode="Markdown"
     )
+    return True
 
 
 @router.callback_query(F.data.startswith("dl:"))

@@ -140,10 +140,12 @@
                     })
                 });
                 
-                if (response.ok) {
+                const data = await response.json();
+                if (response.ok && data.status === "ok") {
                     webapp.close();
                 } else {
-                    alert("حدث خطأ أثناء إرسال اختيارك. يرجى المحاولة مجدداً.");
+                    const msg = (data && data.message) ? data.message : "حدث خطأ أثناء إرسال اختيارك. يرجى المحاولة مجدداً.";
+                    alert(msg);
                     document.getElementById('loader').style.display = 'none';
                     document.getElementById('list').style.pointerEvents = 'auto';
                 }

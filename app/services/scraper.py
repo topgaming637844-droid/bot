@@ -667,42 +667,72 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
             logger.exception(f"Failed to decrypt/resolve Videa: {e}")
         return None
 
-    # ok.ru embed: parse the embedded JSON metadata for direct video URLs or hlsManifestUrl
+    # ok.ru embed: parse embedded JSON metadata for direct video URLs or hlsManifestUrl
     if "ok.ru" in embed_url:
         try:
             logger.info(f"Resolving ok.ru embed: {embed_url}")
             headers = get_browser_headers(embed_url)
-            async with session.get(embed_url, headers=headers, ssl=False, timeout=10) as response:
-                if response.status == 200:
-                    text = await response.text()
-                    import html as html_lib
-                    text = html_lib.unescape(text)
-                    # Extract the nested metadata JSON containing video URLs
-                    metadata_match = re.search(r'data-options="([^"]+)"', text)
-                    if not metadata_match:
-                        metadata_match = re.search(r'"metadata"\s*:\s*"(\{.+?})"', text)
-                    if metadata_match:
-                        meta_str = metadata_match.group(1)
-                        meta_str = meta_str.replace('\\u0026', '&').replace('\\"', '"').replace('\\\\u0026', '&')
-                        try:
-                            meta = json.loads(meta_str)
-                        except Exception:
-                            meta = None
-                    else:
-                        meta = None
-                    # Try to find hlsManifestUrl directly in the full text
-                    hls_match = re.search(r'hlsManifestUrl[^"]*"\s*:\s*"([^"]+)"', text)
-                    if hls_match:
-                        hls_url = hls_match.group(1).replace('\\u0026', '&').replace('\\\\u0026', '&')
-                        logger.info(f"Resolved ok.ru HLS manifest: {hls_url}")
-                        return hls_url
-                    # Fallback: extract direct video URLs from "videos" array
-                    video_matches = re.findall(r'"url"\s*:\s*"(https?://vd[^"]+)"', text)
-                    if video_matches:
-                        # Take the last one (usually highest quality)
-                        best_url = video_matches[-1].replace('\\u0026', '&').replace('\\\\u0026', '&')
-                        logger.info(f"Resolved ok.ru direct video: {best_url}")
-                        return best_url
+            text = ""
+            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                resp = await session.get(embed_url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    text = resp.text
+            else:
+                async with session.get(embed_url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as resp:
+                    if resp.status == 200:
+                        text = await resp.text()
+
+            if text:
+                import html as html_lib
+                text = html_lib.unescape(text)
+                ok_qualities = {}
+
+                # Extract data-options or metadata json attribute
+                meta_matches = re.findall(r'data-options="([^"]+)"', text)
+                for meta_raw in meta_matches:
+                    clean_raw = meta_raw.replace('&quot;', '"').replace('\\"', '"').replace('\\u0026', '&')
+                    try:
+                        meta_json = json.loads(clean_raw)
+                        meta_obj = meta_json.get("flashvars", meta_json)
+                        if isinstance(meta_obj, dict) and "metadata" in meta_obj:
+                            meta_inner = json.loads(meta_obj["metadata"]) if isinstance(meta_obj["metadata"], str) else meta_obj["metadata"]
+                            videos = meta_inner.get("videos", [])
+                            for v in videos:
+                                v_url = v.get("url")
+                                v_name = str(v.get("name", "")).lower()
+                                if v_url:
+                                    if "full" in v_name or "1080" in v_name:
+                                        ok_qualities["1080p"] = v_url
+                                    elif "hd" in v_name or "720" in v_name:
+                                        ok_qualities["720p"] = v_url
+                                    elif "sd" in v_name or "480" in v_name:
+                                        ok_qualities["480p"] = v_url
+                                    elif "low" in v_name or "360" in v_name:
+                                        ok_qualities["360p"] = v_url
+                                    elif "lowest" in v_name or "240" in v_name:
+                                        ok_qualities["240p"] = v_url
+                                    else:
+                                        ok_qualities["720p"] = v_url
+                    except Exception:
+                        pass
+
+                if ok_qualities:
+                    logger.info(f"Resolved ok.ru qualities: {list(ok_qualities.keys())}")
+                    return json.dumps(ok_qualities)
+
+                # Direct HLS manifest search
+                hls_match = re.search(r'hlsManifestUrl[^\s"\']*"\s*:\s*"([^"]+)"', text)
+                if hls_match:
+                    hls_url = hls_match.group(1).replace('\\u0026', '&').replace('\\/', '/')
+                    logger.info(f"Resolved ok.ru HLS manifest: {hls_url}")
+                    return hls_url
+
+                # Direct video URLs regex pattern (https://vd*.okcdn.ru/... or vd*.mycdn.me/...)
+                video_matches = re.findall(r'"url"\s*:\s*"(https?://[^"\']+(?:okcdn|mycdn|vd)[^"\']*)"', text)
+                if video_matches:
+                    best_url = video_matches[-1].replace('\\u0026', '&').replace('\\/', '/')
+                    logger.info(f"Resolved ok.ru direct video: {best_url}")
+                    return best_url
         except Exception as e:
             logger.warning(f"Failed to resolve ok.ru embed: {e}")
         return None
