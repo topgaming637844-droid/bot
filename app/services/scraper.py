@@ -987,8 +987,6 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
         if "witanime.you" in play_url:
             play_url = play_url.replace("https://witanime.you", f"https://{WITANIME_DOMAIN}")
             
-        # Try retrieving play URL, with dynamic domain fallback if it returns 404/empty
-        html = ""
         url_domains = ["witanime.life", "witanime.pics", "witanime.site", "witanime.red", "witanime.com"]
         
         # Extract current domain from play_url
@@ -1008,152 +1006,154 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
             if current_domain and domain != current_domain:
                 target_url = play_url.replace(current_domain, domain)
                 
-            logger.info(f"Attempting to fetch play page: {target_url}")
+            logger.info(f"Attempting to process watch page: {target_url}")
             try:
                 html = await get_html(target_url, session)
-                if html == "STATUS_403_FORBIDDEN":
+                if not html or html == "STATUS_403_FORBIDDEN":
+                    logger.warning(f"Could not retrieve HTML (or 403) from mirror: {target_url}")
                     continue
-                if html and ("servers-list" in html or "episode-servers" in html or "download" in html):
-                    play_url = target_url  # update to successfully resolved url
-                    break
-            except Exception:
-                pass
+                    
+                soup = BeautifulSoup(html, "html.parser")
                 
-        if not html:
-            logger.warning(f"Could not retrieve watch page HTML from any domain mirrors for: {play_url}")
-            return {}
-            
-        # Find server labels/names inside DOM
-        soup = BeautifulSoup(html, "html.parser")
-        
-        # Try a broader and more resilient list of selectors for server elements
-        servers = []
-        for sel in [
-            "#episode-servers li", ".episode-servers li", "ul.servers-list li", ".servers-list li", 
-            "#watch-servers li", "li.server", "#episode-servers a", ".episode-servers a", 
-            "#watch-servers a", "ul.servers-list a", ".servers-list a",
-            ".server-list li", "#servers-list li", "div.watch-servers li", ".tab-content .server-item", "ul li[data-server]"
-        ]:
-            found = soup.select(sel)
-            if found:
-                servers = found
-                break
-        
-        server_names = [s.text.strip().lower() for s in servers]
-        
-        # Extract player registry keys
-        zx_match = re.search(r'var _zX="([^"]+)"', html)
-        zk_match = re.search(r'var _zK="([^"]+)"', html)
-        
-        if not zx_match or not zk_match:
-            logger.warning("Failed to locate player registries (_zX / _zK) on watch page")
-            return {}
-            
-        resources = json.loads(safe_b64decode(zx_match.group(1)).decode("utf-8"))
-        configs = json.loads(safe_b64decode(zk_match.group(1)).decode("utf-8"))
-        
-        resolved_links = {}
-        hls_indices = []
-        other_indices = []
-        direct_indices = []
-        
-        for idx, (res, conf) in enumerate(zip(resources, configs)):
-            s_name = server_names[idx] if idx < len(server_names) else ""
-            if any(x in s_name for x in ["streamwish", "yona", "yonaplay", "videa", "hglink", "soraplay", "sorastream", "hanerix"]):
-                hls_indices.append(idx)
-            elif "mp4upload" in s_name or "yourupload" in s_name:
-                direct_indices.append(idx)
-            else:
-                other_indices.append(idx)
+                # 1. Try standard watch page parsing
+                resolved_links = await _parse_standard_watch_page(html, soup, session, target_url)
+                if resolved_links:
+                    logger.info(f"Successfully resolved {len(resolved_links)} download link qualities from standard parsing on {domain}")
+                    return resolved_links
+                    
+                # 2. Try blind regex scan
+                logger.info(f"Standard parsing yielded 0 links on {domain}. Triggering execute_blind_regex_harvest...")
+                resolved_links = await execute_blind_regex_harvest(html, session)
+                if resolved_links:
+                    logger.info(f"Successfully resolved {len(resolved_links)} download link qualities from blind regex harvest on {domain}")
+                    return resolved_links
+            except Exception as e:
+                logger.exception(f"Error processing watch page domain mirror {target_url}: {e}")
                 
-        for idx in hls_indices + other_indices + direct_indices:
-            res = resources[idx]
-            conf = configs[idx]
-            s_name = server_names[idx] if idx < len(server_names) else ""
-            embed_url = decrypt_resource(res, conf)
-            if embed_url:
-                m3u8_master = await get_m3u8_from_embed(embed_url, session, referer=play_url)
-                if m3u8_master:
-                    if m3u8_master.startswith("{"):
-                        try:
-                            qualities = json.loads(m3u8_master)
-                            resolved_links.update(qualities)
-                        except Exception:
-                            pass
-                    elif ".m3u8" in m3u8_master:
-                        qualities = await parse_m3u8_qualities(m3u8_master, session)
-                        resolved_links.update(qualities)
-                    else:
-                        q_name = normalize_quality_name(s_name) if s_name else "480p"
-                        if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                            q_name = "480p"
-                        resolved_links[q_name] = m3u8_master
-                        
-        if not resolved_links:
-            logger.info("HLS/Embed parsing yielded 0 links. Scraping fallback download table buttons on watch page...")
-            download_btns = soup.select(".download-links a, table.download-table a, a.download-link, .download-item a, .download-list a, .dlinks a, .quality-download a, .quality-box a")
-            if not download_btns:
-                download_btns = soup.find_all("a", href=lambda h: h and any(x in str(h).lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru"]))
-            if not download_btns:
-                download_btns = soup.find_all("a", href=True)
-                
-            for a in download_btns:
-                href = a.get("href")
-                if href and href.startswith("http"):
-                    label = (a.text.strip() + " " + str(a.get("class", "")) + " " + href).lower()
-                    if not any(x in href.lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru", "mail.ru", "streamwish"]):
-                        continue
-                        
-                    q_name = normalize_quality_name(label)
-                    if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                        if "1080" in label or "fhd" in label or "جودة خارقة" in label:
-                            q_name = "1080p"
-                        elif "720" in label or "hd" in label or "جودة عالية" in label:
-                            q_name = "720p"
-                        elif "360" in label or "sd" in label or "جودة كافية" in label:
-                            q_name = "360p"
-                        else:
-                            q_name = "480p"
-
-                    final_url = href
-                    if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
-                        try:
-                            logger.info(f"Following shortlink redirect for fallback download link: {href}")
-                            headers = get_browser_headers(href)
-                            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-                                resp = await session.get(href, headers=headers, timeout=8)
-                                if resp.url:
-                                    final_url = str(resp.url)
-                            else:
-                                async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
-                                    final_url = str(resp.url)
-                            logger.info(f"Resolved shortlink final destination: {final_url}")
-                        except Exception as ex:
-                            logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
-
-                    if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
-                        resolved_links[q_name] = final_url
-                        
-        if not resolved_links:
-            logger.warning("Failed to parse working HLS streams or direct video files from embed servers or download table. Triggering deep HTML regex scan...")
-            resolved_links = await execute_deep_html_regex_scan(html, session)
-            
-        if not resolved_links:
-            logger.warning("All standard parsing and deep regex scanning fallbacks yielded 0 links.")
-            return {}
-            
-        logger.info(f"Resolved {len(resolved_links)} download link qualities: {list(resolved_links.keys())}")
-        return resolved_links
+        logger.warning(f"All standard parsing and blind regex harvesting mirrors failed for: {play_url}")
+        return {}
     except Exception:
         logger.exception("Error in process while scraping download links")
         return {}
 
-async def execute_deep_html_regex_scan(raw_html: str, session: Any) -> Dict[str, str]:
+async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: Any, play_url: str) -> Dict[str, str]:
+    # Find server labels/names inside DOM
+    servers = []
+    for sel in [
+        "#episode-servers li", ".episode-servers li", "ul.servers-list li", ".servers-list li", 
+        "#watch-servers li", "li.server", "#episode-servers a", ".episode-servers a", 
+        "#watch-servers a", "ul.servers-list a", ".servers-list a",
+        ".server-list li", "#servers-list li", "div.watch-servers li", ".tab-content .server-item", "ul li[data-server]"
+    ]:
+        found = soup.select(sel)
+        if found:
+            servers = found
+            break
+    
+    server_names = [s.text.strip().lower() for s in servers]
+    
+    # Extract player registry keys
+    zx_match = re.search(r'var _zX="([^"]+)"', html)
+    zk_match = re.search(r'var _zK="([^"]+)"', html)
+    
+    resolved_links = {}
+    
+    if zx_match and zk_match:
+        try:
+            resources = json.loads(safe_b64decode(zx_match.group(1)).decode("utf-8"))
+            configs = json.loads(safe_b64decode(zk_match.group(1)).decode("utf-8"))
+            
+            hls_indices = []
+            other_indices = []
+            direct_indices = []
+            
+            for idx, (res, conf) in enumerate(zip(resources, configs)):
+                s_name = server_names[idx] if idx < len(server_names) else ""
+                if any(x in s_name for x in ["streamwish", "yona", "yonaplay", "videa", "hglink", "soraplay", "sorastream", "hanerix"]):
+                    hls_indices.append(idx)
+                elif "mp4upload" in s_name or "yourupload" in s_name:
+                    direct_indices.append(idx)
+                else:
+                    other_indices.append(idx)
+                    
+            for idx in hls_indices + other_indices + direct_indices:
+                res = resources[idx]
+                conf = configs[idx]
+                s_name = server_names[idx] if idx < len(server_names) else ""
+                embed_url = decrypt_resource(res, conf)
+                if embed_url:
+                    m3u8_master = await get_m3u8_from_embed(embed_url, session, referer=play_url)
+                    if m3u8_master:
+                        if m3u8_master.startswith("{"):
+                            try:
+                                qualities = json.loads(m3u8_master)
+                                resolved_links.update(qualities)
+                            except Exception:
+                                pass
+                        elif ".m3u8" in m3u8_master:
+                            qualities = await parse_m3u8_qualities(m3u8_master, session)
+                            resolved_links.update(qualities)
+                        else:
+                            q_name = normalize_quality_name(s_name) if s_name else "480p"
+                            if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                                q_name = "480p"
+                            resolved_links[q_name] = m3u8_master
+        except Exception as e:
+            logger.warning(f"Error parsing player registry links: {e}")
+            
+    if not resolved_links:
+        logger.info("HLS/Embed parsing yielded 0 links. Scraping fallback download table buttons on watch page...")
+        download_btns = soup.select(".download-links a, table.download-table a, a.download-link, .download-item a, .download-list a, .dlinks a, .quality-download a, .quality-box a")
+        if not download_btns:
+            download_btns = soup.find_all("a", href=lambda h: h and any(x in str(h).lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru"]))
+        if not download_btns:
+            download_btns = soup.find_all("a", href=True)
+            
+        for a in download_btns:
+            href = a.get("href")
+            if href and href.startswith("http"):
+                label = (a.text.strip() + " " + str(a.get("class", "")) + " " + href).lower()
+                if not any(x in href.lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru", "mail.ru", "streamwish"]):
+                    continue
+                    
+                q_name = normalize_quality_name(label)
+                if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                    if "1080" in label or "fhd" in label or "جودة خارقة" in label:
+                        q_name = "1080p"
+                    elif "720" in label or "hd" in label or "جودة عالية" in label:
+                        q_name = "720p"
+                    elif "360" in label or "sd" in label or "جودة كافية" in label:
+                        q_name = "360p"
+                    else:
+                        q_name = "480p"
+
+                final_url = href
+                if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
+                    try:
+                        logger.info(f"Following shortlink redirect for fallback download link: {href}")
+                        headers = get_browser_headers(href)
+                        if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                            resp = await session.get(href, headers=headers, timeout=8)
+                            if resp.url:
+                                final_url = str(resp.url)
+                        else:
+                            async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
+                                final_url = str(resp.url)
+                        logger.info(f"Resolved shortlink final destination: {final_url}")
+                    except Exception as ex:
+                        logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+
+                if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
+                    resolved_links[q_name] = final_url
+                    
+    return resolved_links
+
+async def execute_blind_regex_harvest(raw_html: str, session: Any = None) -> Dict[str, str]:
     """
     Treats the entire page source code as a raw text buffer.
     Bypasses BeautifulSoup completely and uses regular expressions to capture hidden links.
     """
-    logger.info("Executing raw HTML deep regex scanner fallback...")
+    logger.info("Executing raw HTML blind regex harvest fallback...")
     resolved = {}
     
     # 1. Match direct HLS streams (.m3u8)
@@ -1164,7 +1164,7 @@ async def execute_deep_html_regex_scan(raw_html: str, session: Any) -> Dict[str,
     
     # Merge and deduplicate
     all_links = list(set(hls_matches + locker_matches))
-    logger.info(f"Deep regex scanner captured {len(all_links)} potential resource links.")
+    logger.info(f"Blind regex scanner captured {len(all_links)} potential resource links.")
     
     for link in all_links:
         # Clean up escapes in URLs (e.g. "\/" -> "/")
@@ -1174,11 +1174,11 @@ async def execute_deep_html_regex_scan(raw_html: str, session: Any) -> Dict[str,
         if "witanime" in link and not ".m3u8" in link:
             continue
             
-        logger.info(f"Deep scanner checking link: {link}")
+        logger.info(f"Blind scanner checking link: {link}")
         final_url = link
         
-        # Resolve shortlink redirectors if matched
-        if any(x in link for x in ["go.witanime", "/go/", "redirect", "short"]):
+        # Resolve shortlink redirectors if matched and session is provided
+        if session and any(x in link for x in ["go.witanime", "/go/", "redirect", "short"]):
             try:
                 headers = get_browser_headers(link)
                 if hasattr(session, 'get') and hasattr(session, 'impersonate'):
@@ -1188,9 +1188,9 @@ async def execute_deep_html_regex_scan(raw_html: str, session: Any) -> Dict[str,
                 else:
                     async with session.get(link, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
                         final_url = str(resp.url)
-                logger.info(f"Resolved deep scan redirect to: {final_url}")
+                logger.info(f"Resolved blind harvest redirect to: {final_url}")
             except Exception as e:
-                logger.warning(f"Failed redirect resolution for deep scan URL {link}: {e}")
+                logger.warning(f"Failed redirect resolution for blind harvest URL {link}: {e}")
                 continue
                 
         # Skip if resolved URL is still a witanime page
@@ -1213,6 +1213,9 @@ async def execute_deep_html_regex_scan(raw_html: str, session: Any) -> Dict[str,
             resolved[q_name] = final_url
             
     return resolved
+
+# Keep alias
+execute_deep_html_regex_scan = execute_blind_regex_harvest
 
 async def try_fetch_anime_page_with_fallbacks(session: Any, anime_slug: str) -> tuple[str, str, str]:
     """

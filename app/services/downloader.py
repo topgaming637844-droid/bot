@@ -542,6 +542,8 @@ async def download_file(
             return True
         logger.warning("Multipart download failed or blocked by host CDN. Falling back to high-speed single-stream direct download...")
 
+    # Single-stream direct chunked streaming downloader
+    logger.info(f"Downloading static monolithic video file via chunked streaming context: {url}")
     connector = get_session_connector(limit=0)
     referer = get_referer_for_url(url)
     headers = {"User-Agent": CHROME_USER_AGENT, "Referer": referer}
@@ -562,10 +564,14 @@ async def download_file(
     try:
         async with aiohttp.ClientSession(connector=connector, headers=keep_alive_headers) as session:
             client_timeout = aiohttp.ClientTimeout(total=None, sock_read=60)
-            async with session.get(url, headers=headers, ssl=False, timeout=client_timeout) as response:
-                if response.status != 200:
+            async with session.get(url, headers=headers, allow_redirects=True, ssl=False, timeout=client_timeout) as response:
+                if response.status not in [200, 206]:
                     logger.error(f"Error in process: standard download returned status {response.status}")
                     return False
+                
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > 0:
+                    total_size = int(content_length)
                     
                 with open(target_path, "wb", buffering=1024*1024) as f:
                     async for chunk in response.content.iter_chunked(chunk_size):
@@ -590,7 +596,7 @@ async def download_file(
                                 f"الحجم المحمل: `{dl_mb:.1f} ميجابايت` / `{total_mb:.1f} ميجابايت`\n"
                                 f"السرعة: `{speed_mb:.2f} ميجابايت/ثانية`"
                             )
-                            if int(percentage) % 10 == 0:
+                            if total_size > 0 and int(percentage) % 10 == 0:
                                 logger.info(f"تقدم التحميل: {percentage:.1f}% - {dl_mb:.1f}/{total_mb:.1f} ميجابايت - السرعة: {speed_mb:.2f} ميجابايت/ثانية")
                             try:
                                 await status_message.edit_text(progress_text, parse_mode="Markdown")
@@ -600,7 +606,7 @@ async def download_file(
                             
         # Verify the file is not empty or too small (e.g. less than 1 KB) to prevent Telegram upload failures
         if not target_path.exists() or target_path.stat().st_size < 1024:
-            logger.error(f"Downloaded file {target_path} is empty or too small ({target_path.stat().st_size if target_path.exists() else 0} bytes). Marking download as failed.")
+            logger.error(f"Downloaded file {target_path} is empty or too small. Marking download as failed.")
             if target_path.exists():
                 try: target_path.unlink()
                 except Exception: pass
@@ -662,19 +668,14 @@ async def process_and_send_video(
     has_local_server = config.TELEGRAM_API_SERVER is not None
     if size > MAX_TELEGRAM_STANDARD_SIZE and not has_local_server:
         await status_msg.edit_text(
-            f"⚠️ **تنبيه الحجم**:\n"
-            f"حجم الفيديو هو **{size_mb:.1f} ميجابايت** وهو ما يتجاوز حد الرفع المسموح به للبوتات في تلغرام (50 ميجابايت).\n\n"
-            f"بما أنه لم يتم تهيئة خادم Bot API محلي، إليك رابط التحميل المباشر عوضاً عن ذلك:\n"
-            f"🔗 [رابط التحميل المباشر]({download_url})",
+            f"❌ حجم الفيديو هو **{size_mb:.1f} ميجابايت** وهو ما يتجاوز حد الرفع المسموح به للبوتات في تلغرام (50 ميجابايت) بدون خادم محلي.",
             parse_mode="Markdown"
         )
         return
 
     if size > MAX_TELEGRAM_LOCAL_SIZE:
         await status_msg.edit_text(
-            f"❌ حجم الملف هو **{size_mb:.1f} جيجابايت**، مما يتجاوز حد تلغرام الأقصى (2 جيجابايت).\n"
-            f"يرجى تحميله مباشرة عبر المتصفح:\n"
-            f"🔗 [رابط مباشر]({download_url})",
+            f"❌ حجم الملف هو **{size_mb:.1f} جيجابايت**، مما يتجاوز حد تلغرام الأقصى (2 جيجابايت).",
             parse_mode="Markdown"
         )
         return
@@ -870,9 +871,7 @@ async def process_and_send_video(
     except Exception as e:
         logger.exception("Error in process while downloading/uploading video")
         await status_msg.edit_text(
-            f"❌ فشل الرفع: {e}\n\n"
-            f"إليك رابط التحميل المباشر عوضاً عن ذلك:\n"
-            f"🔗 [رابط مباشر]({download_url})"
+            f"❌ فشل الرفع: {e}"
         )
     finally:
         if temp_file_path.exists():

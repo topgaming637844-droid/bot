@@ -652,11 +652,10 @@ async def execute_queued_task(
                     if compressed_file_path.exists():
                         try: os.unlink(compressed_file_path)
                         except Exception: pass
-                    # Send direct link fallback as Plan B
+                    # Send direct link fallback as Plan B (NO raw HTTP text links shortcuts)
                     fallback_text = (
-                        f"❌ حجم الملف هو `{actual_size / (1024*1024*1024):.2f} جيجابايت` وهو يتجاوز حد تلغرام الأقصى للرفع.\n"
-                        f"فشل خادم الضغط التلقائي. إليك رابط البث المباشر عوضاً عن ذلك:\n\n"
-                        f"🔗 [تحميل مباشر عبر المتصفح]({download_url})"
+                        f"❌ حجم الملف هو `{actual_size / (1024*1024*1024):.2f} جيجابايت` وهو يتجاوز حد تلغرام الأقصى للرفع (2 جيجابايت).\n"
+                        f"فشل خادم الضغط التلقائي."
                     )
                     if status_msg_id:
                         try: await bot.edit_message_text(fallback_text, chat_id=chat_id, message_id=status_msg_id, parse_mode="Markdown")
@@ -712,7 +711,7 @@ async def execute_queued_task(
         if status_msg_id:
             try:
                 await bot.edit_message_text(
-                    f"❌ فشل الرفع: {e}\n\nإليك رابط التحميل المباشر عوضاً عن ذلك:\n🔗 [رابط مباشر]({download_url})",
+                    f"❌ فشل الرفع: {e}",
                     chat_id=chat_id,
                     message_id=status_msg_id,
                     parse_mode="Markdown"

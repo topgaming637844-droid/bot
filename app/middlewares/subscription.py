@@ -56,26 +56,29 @@ class SubscriptionMiddleware(BaseMiddleware):
                     
                     # Notify admins
                     try:
-                        from app.database.models import BotAdmin
-                        stmt_admins = select(BotAdmin.user_id)
-                        res_admins = await db_session.execute(stmt_admins)
-                        admin_ids = list(res_admins.scalars().all())
-                        admin_ids.append(config.SUPER_ADMIN_ID)
-                        admin_ids = list(set(admin_ids))
-                        
-                        name_str = f"{user.first_name or ''} {user.last_name or ''}".strip() or "لا يوجد اسم"
-                        user_link = f"<a href='tg://user?id={user.id}'>{name_str}</a>"
-                        notif_text = (
-                            f"👤 <b>مستخدم جديد دخل البوت! | New User Joined</b>\n\n"
-                            f"• <b>الاسم:</b> {user_link}\n"
-                            f"• <b>المعرف (ID):</b> <code>{user.id}</code>\n"
-                            f"• <b>اليوزر نيم:</b> @{user.username or 'لا يوجد'}"
-                        )
-                        for admin_id in admin_ids:
-                            try:
-                                await bot.send_message(chat_id=admin_id, text=notif_text, parse_mode="HTML")
-                            except Exception:
-                                pass
+                        from app.utils.settings import get_setting
+                        join_notif = await get_setting("join_notif_enabled", "true")
+                        if join_notif == "true":
+                            from app.database.models import BotAdmin
+                            stmt_admins = select(BotAdmin.user_id)
+                            res_admins = await db_session.execute(stmt_admins)
+                            admin_ids = list(res_admins.scalars().all())
+                            admin_ids.append(config.SUPER_ADMIN_ID)
+                            admin_ids = list(set(admin_ids))
+                            
+                            name_str = f"{user.first_name or ''} {user.last_name or ''}".strip() or "لا يوجد اسم"
+                            user_link = f"<a href='tg://user?id={user.id}'>{name_str}</a>"
+                            notif_text = (
+                                f"👤 <b>مستخدم جديد دخل البوت! | New User Joined</b>\n\n"
+                                f"• <b>الاسم:</b> {user_link}\n"
+                                f"• <b>المعرف (ID):</b> <code>{user.id}</code>\n"
+                                f"• <b>اليوزر نيم:</b> @{user.username or 'لا يوجد'}"
+                            )
+                            for admin_id in admin_ids:
+                                try:
+                                    await bot.send_message(chat_id=admin_id, text=notif_text, parse_mode="HTML")
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 else:
