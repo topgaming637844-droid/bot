@@ -564,6 +564,10 @@ async def cmd_admin(message: Message, db_session: AsyncSession):
             InlineKeyboardButton(text="📢 إذاعة جماعية", callback_data="admin_broadcast")
         ],
         [
+            InlineKeyboardButton(text="👥 قائمة المستخدمين", callback_data="admin_users_page:1"),
+            InlineKeyboardButton(text="🚫 الحاظرين للبوت", callback_data="admin_blocked_page:1")
+        ],
+        [
             InlineKeyboardButton(text="🔒 قفل الاشتراك الإجباري", callback_data="admin_toggle_sub"),
             InlineKeyboardButton(text="🖼️ تغيير الخلفية", callback_data="admin_set_bg")
         ]
@@ -634,6 +638,10 @@ async def handle_admin_home(callback: CallbackQuery, db_session: AsyncSession):
             InlineKeyboardButton(text="📢 إذاعة جماعية", callback_data="admin_broadcast")
         ],
         [
+            InlineKeyboardButton(text="👥 قائمة المستخدمين", callback_data="admin_users_page:1"),
+            InlineKeyboardButton(text="🚫 الحاظرين للبوت", callback_data="admin_blocked_page:1")
+        ],
+        [
             InlineKeyboardButton(text="🔒 قفل الاشتراك الإجباري", callback_data="admin_toggle_sub"),
             InlineKeyboardButton(text="🖼️ تغيير الخلفية", callback_data="admin_set_bg")
         ]
@@ -645,6 +653,138 @@ async def handle_admin_home(callback: CallbackQuery, db_session: AsyncSession):
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+
+@router.callback_query(F.data.startswith("admin_users_page:"))
+async def handle_admin_users_page(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await safe_answer(callback)
+    
+    page = int(callback.data.split(":")[1])
+    per_page = 5
+    offset = (page - 1) * per_page
+    
+    from app.database.models import User, UserFavorites, PersistentTaskQueue
+    
+    # Get total count of active users
+    stmt_count = select(func.count(User.id)).where((User.is_blocked == False) | (User.is_blocked == None))
+    res_count = await db_session.execute(stmt_count)
+    total_users = res_count.scalar() or 0
+    
+    # Get users for page
+    stmt_users = select(User).where((User.is_blocked == False) | (User.is_blocked == None)).order_by(User.created_at.desc()).offset(offset).limit(per_page)
+    res_users = await db_session.execute(stmt_users)
+    users = res_users.scalars().all()
+    
+    text = f"👥 <b>قائمة المستخدمين النشطين (صفحة {page} من {(total_users + per_page - 1) // per_page or 1}):</b>\n"
+    text += f"إجمالي عدد المستخدمين النشطين: <b>{total_users}</b>\n\n"
+    
+    if not users:
+        text += "لا يوجد مستخدمين نشطين حالياً."
+    else:
+        for idx, u in enumerate(users, start=offset + 1):
+            name_str = f"{u.first_name or ''} {u.last_name or ''}".strip() or "لا يوجد اسم"
+            username_str = f"@{u.username}" if u.username else "لا يوجد"
+            
+            # Fetch chosen animes
+            stmt_favs = select(UserFavorites.anime_title).where(UserFavorites.user_id == u.user_id)
+            res_favs = await db_session.execute(stmt_favs)
+            fav_titles = res_favs.scalars().all()
+            
+            stmt_tasks = select(PersistentTaskQueue.anime_title).where(PersistentTaskQueue.user_id == u.user_id)
+            res_tasks = await db_session.execute(stmt_tasks)
+            task_titles = res_tasks.scalars().all()
+            
+            chosen_animes = sorted(list(set(fav_titles + task_titles)))
+            animes_str = ", ".join(chosen_animes) if chosen_animes else "لم يحدد أي أنمي بعد"
+            
+            joined_date = u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "غير معروف"
+            
+            text += (
+                f"{idx}. <b>الاسم:</b> <a href='tg://user?id={u.user_id}'>{name_str}</a>\n"
+                f"   • <b>المعرف:</b> <code>{u.user_id}</code>\n"
+                f"   • <b>اليوزر:</b> {username_str}\n"
+                f"   • <b>الأنميات المختارة:</b> <i>{animes_str}</i>\n"
+                f"   • <b>تاريخ الانضمام:</b> <code>{joined_date}</code>\n\n"
+            )
+            
+    # Keyboard
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ السابق", callback_data=f"admin_users_page:{page - 1}"))
+    if offset + per_page < total_users:
+        nav_buttons.append(InlineKeyboardButton(text="التالي ➡️", callback_data=f"admin_users_page:{page + 1}"))
+        
+    keyboard = []
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    keyboard.append([InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")])
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("admin_blocked_page:"))
+async def handle_admin_blocked_page(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await safe_answer(callback)
+    
+    page = int(callback.data.split(":")[1])
+    per_page = 5
+    offset = (page - 1) * per_page
+    
+    from app.database.models import User
+    
+    # Get total count of blocked users
+    stmt_count = select(func.count(User.id)).where(User.is_blocked == True)
+    res_count = await db_session.execute(stmt_count)
+    total_blocked = res_count.scalar() or 0
+    
+    # Get users for page
+    stmt_users = select(User).where(User.is_blocked == True).order_by(User.created_at.desc()).offset(offset).limit(per_page)
+    res_users = await db_session.execute(stmt_users)
+    users = res_users.scalars().all()
+    
+    text = f"🚫 <b>قائمة المستخدمين الحاظرين للبوت (صفحة {page} من {(total_blocked + per_page - 1) // per_page or 1}):</b>\n"
+    text += f"إجمالي المستخدمين الذين حظروا البوت: <b>{total_blocked}</b>\n\n"
+    
+    if not users:
+        text += "لا يوجد مستخدمين حاظرين للبوت حالياً (يتم اكتشافهم وتحديثهم تلقائياً عند إرسال إذاعة جماعية)."
+    else:
+        for idx, u in enumerate(users, start=offset + 1):
+            name_str = f"{u.first_name or ''} {u.last_name or ''}".strip() or "لا يوجد اسم"
+            username_str = f"@{u.username}" if u.username else "لا يوجد"
+            joined_date = u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "غير معروف"
+            
+            text += (
+                f"{idx}. <b>الاسم:</b> <a href='tg://user?id={u.user_id}'>{name_str}</a>\n"
+                f"   • <b>المعرف:</b> <code>{u.user_id}</code>\n"
+                f"   • <b>اليوزر:</b> {username_str}\n"
+                f"   • <b>تاريخ الانضمام:</b> <code>{joined_date}</code>\n\n"
+            )
+            
+    # Keyboard
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ السابق", callback_data=f"admin_blocked_page:{page - 1}"))
+    if offset + per_page < total_blocked:
+        nav_buttons.append(InlineKeyboardButton(text="التالي ➡️", callback_data=f"admin_blocked_page:{page + 1}"))
+        
+    keyboard = []
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    keyboard.append([InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")])
+    
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await callback.message.edit_text(text, reply_markup=markup, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "admin_broadcast")
@@ -687,11 +827,22 @@ async def process_admin_broadcast(message: Message, db_session: AsyncSession, st
     success_count = 0
     fail_count = 0
     
+    from aiogram.exceptions import TelegramForbiddenError
+    from sqlalchemy import update
+    
     for uid in user_ids:
         try:
             await message.copy_to(chat_id=uid)
             success_count += 1
             await asyncio.sleep(0.05) # Rate limit protection
+        except TelegramForbiddenError:
+            fail_count += 1
+            try:
+                stmt_block = update(User).where(User.user_id == uid).values(is_blocked=True)
+                await db_session.execute(stmt_block)
+                await db_session.commit()
+            except Exception:
+                pass
         except Exception:
             fail_count += 1
             

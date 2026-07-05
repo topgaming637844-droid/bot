@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, JSON, Text, func, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, JSON, Text, func, UniqueConstraint, Boolean
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -90,6 +90,9 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    is_blocked = Column(Boolean, default=False, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

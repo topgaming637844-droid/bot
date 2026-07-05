@@ -49,4 +49,14 @@ async def init_db():
                 await conn.execute(text("ALTER TABLE telegram_file_cache ADD COLUMN IF NOT EXISTS file_size DOUBLE PRECISION;"))
         except Exception as e:
             print(f"Info on column migration for telegram_file_cache.file_size: {e}")
+
+        # Column migrations for users table
+        for col_name, col_type in [("first_name", "VARCHAR(255)"), ("last_name", "VARCHAR(255)"), ("is_blocked", "BOOLEAN DEFAULT FALSE")]:
+            try:
+                if is_sqlite:
+                    await conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type};"))
+                else:
+                    await conn.execute(text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
+            except Exception:
+                pass
     print("Database tables initialized successfully.")
