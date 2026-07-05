@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Dict
 
 from aiogram import Bot
-from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,8 +56,8 @@ def prepare_telegram_thumbnail(raw_file_path: Path, target_jpg_path: Path) -> bo
             logger.warning(f"FFmpeg thumbnail fallback failed: {ff_e}")
     return False
 
-async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
-    """Helper to retrieve, format, and prepare custom thumbnail from Telegram as active FSInputFile object."""
+async def get_thumbnail_input(bot: Bot) -> Optional[BufferedInputFile]:
+    """Helper to retrieve, format, and prepare custom thumbnail from Telegram as active BufferedInputFile object."""
     from app.utils.settings import get_setting
     file_id = await get_setting("custom_thumb_file_id")
     if not file_id:
@@ -68,13 +68,11 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
     optimized_path = config.DOWNLOAD_DIR / f"custom_thumb_320_{sanitized_id}.jpg"
     
     if optimized_path.exists() and optimized_path.stat().st_size > 0:
-        return FSInputFile(str(optimized_path))
+        with open(optimized_path, "rb") as tf:
+            return BufferedInputFile(tf.read(), filename="thumb.jpg")
         
     try:
         logger.info(f"Downloading custom thumbnail file from Telegram file_id: {file_id}")
-        # Always query and download custom background thumbnails from Telegram's official cloud server
-        # to ensure correct relative path translation (e.g. photos/file_1.jpg) and direct 200 OK delivery,
-        # bypassing local Bot API server path discrepancies.
         async with Bot(token=bot.token) as cloud_bot:
             file_info = await cloud_bot.get_file(file_id)
             if file_info and file_info.file_path:
@@ -84,9 +82,9 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
             
             if raw_path.exists() and raw_path.stat().st_size > 0:
                 success = prepare_telegram_thumbnail(raw_path, optimized_path)
-                if success and optimized_path.exists():
-                    return FSInputFile(str(optimized_path))
-                return FSInputFile(str(raw_path))
+                final_path = optimized_path if (success and optimized_path.exists()) else raw_path
+                with open(final_path, "rb") as tf:
+                    return BufferedInputFile(tf.read(), filename="thumb.jpg")
     except Exception as e:
         logger.warning(f"Failed to download/process custom thumbnail from Telegram: {e}")
         
@@ -666,7 +664,9 @@ async def execute_queued_task(
             try: await bot.edit_message_text("📤 جاري رفع الفيديو إلى تلغرام...", chat_id=chat_id, message_id=status_msg_id)
             except Exception: pass
 
-        video_file = FSInputFile(str(temp_file_path))
+        with open(temp_file_path, "rb") as vf:
+            video_bytes = vf.read()
+        video_file = BufferedInputFile(video_bytes, filename=filename)
         thumb_input = await get_video_thumbnail(bot, db_session_factory, anilist_id)
 
         sent_msg = await bot.send_video(

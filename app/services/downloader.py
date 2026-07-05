@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional
 from urllib.parse import urlparse, parse_qs, urljoin
 from aiogram import Bot
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, Message, BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import config
 from app.utils.user_agents import get_random_user_agent
@@ -770,7 +770,9 @@ async def process_and_send_video(
                 raise Exception(f"فشل ضغط الملف الذي يتجاوز 2 جيجابايت: {compression_err}")
 
         await status_msg.edit_text("📤 جاري رفع الفيديو إلى تلغرام...")
-        video_file = FSInputFile(str(temp_file_path))
+        with open(temp_file_path, "rb") as vf:
+            video_bytes = vf.read()
+        video_file = BufferedInputFile(video_bytes, filename=filename)
         
         # Resolve anime title and episode number
         anime_title = "أنمي"
@@ -853,7 +855,8 @@ async def process_and_send_video(
         thumb_path = Path(__file__).parent.parent / "data" / "custom_thumb.jpg"
         thumb_input = None
         if thumb_path.exists():
-            thumb_input = FSInputFile(str(thumb_path))
+            with open(thumb_path, "rb") as tf:
+                thumb_input = BufferedInputFile(tf.read(), filename="thumb.jpg")
             
         # Resolve next/prev buttons for navigation under video
         prev_ep, next_ep = None, None
