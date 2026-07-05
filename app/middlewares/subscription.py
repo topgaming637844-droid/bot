@@ -12,12 +12,20 @@ class SubscriptionMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        # Extract user
+        # Extract inner event and user from Update wrapper if present
+        from aiogram.types import Update
+        inner_event = event
         user = None
-        if isinstance(event, Message):
-            user = event.from_user
-        elif isinstance(event, CallbackQuery):
-            user = event.from_user
+        
+        if isinstance(event, Update):
+            if event.message:
+                inner_event = event.message
+                user = event.message.from_user
+            elif event.callback_query:
+                inner_event = event.callback_query
+                user = event.callback_query.from_user
+        else:
+            user = event.from_user if hasattr(event, "from_user") else None
             
         if not user:
             return await handler(event, data)
@@ -85,7 +93,7 @@ class SubscriptionMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         # Allow verification callback to pass through
-        if isinstance(event, CallbackQuery) and event.data == "check_sub":
+        if isinstance(inner_event, CallbackQuery) and inner_event.data == "check_sub":
             return await handler(event, data)
 
         # Check membership in the channel
@@ -110,13 +118,13 @@ class SubscriptionMiddleware(BaseMiddleware):
             [InlineKeyboardButton(text="✅ تحقق من الاشتراك", callback_data="check_sub")]
         ])
         
-        if isinstance(event, Message):
-            await event.answer(text, reply_markup=markup, parse_mode="HTML")
-        elif isinstance(event, CallbackQuery):
+        if isinstance(inner_event, Message):
+            await inner_event.answer(text, reply_markup=markup, parse_mode="HTML")
+        elif isinstance(inner_event, CallbackQuery):
             try:
-                await event.message.answer(text, reply_markup=markup, parse_mode="HTML")
+                await inner_event.message.answer(text, reply_markup=markup, parse_mode="HTML")
             except Exception:
                 pass
-            await event.answer("⚠️ يجب عليك الاشتراك أولاً لاستخدام البوت!", show_alert=True)
+            await inner_event.answer("⚠️ يجب عليك الاشتراك أولاً لاستخدام البوت!", show_alert=True)
             
         return None

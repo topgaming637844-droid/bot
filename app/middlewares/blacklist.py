@@ -13,12 +13,20 @@ class BlacklistMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
+        from aiogram.types import Update
+        inner_event = event
         user = None
-        if isinstance(event, Message):
-            user = event.from_user
-        elif isinstance(event, CallbackQuery):
-            user = event.from_user
-
+        
+        if isinstance(event, Update):
+            if event.message:
+                inner_event = event.message
+                user = event.message.from_user
+            elif event.callback_query:
+                inner_event = event.callback_query
+                user = event.callback_query.from_user
+        else:
+            user = event.from_user if hasattr(event, "from_user") else None
+            
         if not user:
             return await handler(event, data)
 
