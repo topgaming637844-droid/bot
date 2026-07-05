@@ -27,30 +27,62 @@ def make_hashtag(title_str: str) -> str:
     cleaned = re.sub(r'\s+', '_', cleaned)
     return cleaned
 
+def prepare_telegram_thumbnail(raw_file_path: Path, target_jpg_path: Path) -> bool:
+    """Ensures image is resized to <=320px, JPEG format, and <200KB for Telegram API requirements."""
+    try:
+        from PIL import Image
+        with Image.open(raw_file_path) as img:
+            img = img.convert("RGB")
+            img.thumbnail((320, 320), Image.Resampling.LANCZOS)
+            img.save(target_jpg_path, "JPEG", quality=85, optimize=True)
+            logger.info(f"Prepared compliant Telegram video thumbnail: {target_jpg_path} ({target_jpg_path.stat().st_size} bytes)")
+            return True
+    except Exception as e:
+        logger.warning(f"PIL failed to format thumbnail: {e}. Attempting FFmpeg fallback...")
+        try:
+            import subprocess
+            cmd = [
+                "ffmpeg", "-y", "-i", str(raw_file_path),
+                "-vf", "scale='min(320,iw)':-1",
+                "-vframes", "1",
+                "-q:v", "2",
+                str(target_jpg_path)
+            ]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            if target_jpg_path.exists() and target_jpg_path.stat().st_size > 0:
+                logger.info(f"Prepared thumbnail via FFmpeg: {target_jpg_path}")
+                return True
+        except Exception as ff_e:
+            logger.warning(f"FFmpeg thumbnail fallback failed: {ff_e}")
+    return False
+
 async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
-    """Helper to retrieve and download custom thumbnail from Telegram to local file as active FSInputFile object."""
+    """Helper to retrieve, format, and prepare custom thumbnail from Telegram as active FSInputFile object."""
     from app.utils.settings import get_setting
     file_id = await get_setting("custom_thumb_file_id")
     if not file_id:
         return None
         
     sanitized_id = re.sub(r'[^a-zA-Z0-9]', '_', str(file_id))[:15]
-    local_path = config.DOWNLOAD_DIR / f"custom_thumb_{sanitized_id}.jpg"
+    raw_path = config.DOWNLOAD_DIR / f"raw_thumb_{sanitized_id}.jpg"
+    optimized_path = config.DOWNLOAD_DIR / f"custom_thumb_320_{sanitized_id}.jpg"
     
-    if local_path.exists() and local_path.stat().st_size > 0:
-        return FSInputFile(str(local_path))
+    if optimized_path.exists() and optimized_path.stat().st_size > 0:
+        return FSInputFile(str(optimized_path))
         
     try:
         logger.info(f"Downloading custom thumbnail file from Telegram file_id: {file_id}")
         file_info = await bot.get_file(file_id)
         if file_info and file_info.file_path:
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            await bot.download_file(file_info.file_path, str(local_path))
-            if local_path.exists() and local_path.stat().st_size > 0:
-                logger.info(f"Custom thumbnail successfully downloaded to: {local_path}")
-                return FSInputFile(str(local_path))
+            os.makedirs(os.path.dirname(raw_path), exist_ok=True)
+            await bot.download_file(file_info.file_path, str(raw_path))
+            if raw_path.exists() and raw_path.stat().st_size > 0:
+                success = prepare_telegram_thumbnail(raw_path, optimized_path)
+                if success and optimized_path.exists():
+                    return FSInputFile(str(optimized_path))
+                return FSInputFile(str(raw_path))
     except Exception as e:
-        logger.warning(f"Failed to download custom thumbnail from Telegram: {e}")
+        logger.warning(f"Failed to download/process custom thumbnail from Telegram: {e}")
         
     return None
 
