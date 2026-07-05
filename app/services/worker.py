@@ -669,12 +669,15 @@ async def execute_queued_task(
         video_file = BufferedInputFile(video_bytes, filename=filename)
         thumb_input = await get_video_thumbnail(bot, db_session_factory, anilist_id)
 
+        # حماية النص من الرموز التي تسبب كراش لتليجرام في المارك داون
+        safe_caption = caption.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+
         sent_msg = await bot.send_video(
             chat_id=chat_id,
             video=video_file,
             thumbnail=thumb_input,
             duration=parse_duration_to_seconds(duration_str),
-            caption=caption,
+            caption=safe_caption,
             supports_streaming=True,
             reply_markup=nav_markup,
             parse_mode="Markdown"
