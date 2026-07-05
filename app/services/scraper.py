@@ -129,42 +129,38 @@ def unpack_dean_edwards(packed_text: str) -> str:
         logger.exception("Error in process: failed to unpack Dean Edwards packed JS")
         return ""
 
+WITANIME_DOMAINS = ["witanime.life", "witanime.pics", "witanime.com", "witanime.red", "witanime.site"]
+
 def get_browser_headers(referer: str = f"https://{WITANIME_DOMAIN}/") -> dict:
-    ua = get_random_user_agent()
     return {
-        "User-Agent": ua,
-        "Referer": referer,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
+        "Referer": referer,
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin" if "witanime" in referer else "cross-site",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0"
+        "Sec-Fetch-Site": "cross-site",
+        "Upgrade-Insecure-Requests": "1"
     }
 
 async def get_html(url: str, session: aiohttp.ClientSession) -> str:
     """Fetches HTML content with custom headers and optional proxy."""
-    headers = get_browser_headers()
+    headers = get_browser_headers(url)
     proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
     logger.info(f"Scraping page: {url}{proxy_str}")
     
-    if config.PROXY_URL:
-        logger.info(f"Proxy used for request: {config.PROXY_URL}")
-        
     try:
-        async with session.get(url, headers=headers, ssl=False, timeout=15) as response:
+        async with session.get(url, headers=headers, ssl=False, timeout=12) as response:
             if response.status == 200:
                 return await response.text()
-            raise ScraperError(f"HTTP error {response.status} fetching {url}")
+            logger.warning(f"HTTP status {response.status} fetching {url}")
+            return ""
     except Exception as e:
-        logger.exception(f"Error in process while fetching HTML from {url}")
-        if not isinstance(e, ScraperError):
-            raise ScraperError(f"Connection failed: {e}") from e
-        raise
+        logger.warning(f"Connection failed for {url}: {e}")
+        return ""
 
 async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Optional[Dict[str, str]]:
     """Resolves parent anime details page from an episode watch page URL."""
@@ -186,13 +182,7 @@ async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Opt
 
 async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) -> Dict[str, str]:
     """Parses master .m3u8 playlist to extract quality variant URLs."""
-    headers = {"User-Agent": get_random_user_agent(), "Referer": f"https://{WITANIME_DOMAIN}/"}
-    proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
-    logger.info(f"Scraping page: {master_url}{proxy_str}")
-    
-    if config.PROXY_URL:
-        logger.info(f"Proxy used for request: {config.PROXY_URL}")
-        
+    headers = get_browser_headers(master_url)
     qualities = {}
     try:
         async with session.get(master_url, headers=headers, ssl=False, timeout=10) as response:
@@ -232,8 +222,7 @@ async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) 
     return qualities
 
 async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
-    """Searches for anime on WitAnime and resolves unique parent series."""
-    # Normalize title to ASCII-friendly format to avoid Cloudflare 403 blocks on special characters
+    """Searches for anime on WitAnime and resolves unique parent series with multi-domain fallback."""
     normalized_title = title.replace("×", " x ").replace(":", " ").replace("-", " ")
     normalized_title = " ".join(normalized_title.split())
     
@@ -242,53 +231,72 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
         logger.info("[MOCK MODE] Simulating search result on WitAnime.")
         return [{"title": f"{title} (TV)", "slug": "mock-anime-slug"}]
 
-    search_url = f"https://{WITANIME_DOMAIN}/?search_param=animes&s={quote(normalized_title)}"
+    search_queries = [
+        f"?search_param=animes&s={quote(normalized_title)}",
+        f"?s={quote(normalized_title)}"
+    ]
     
-    for attempt in range(2):
-        connector = get_connector()
-        if attempt > 0:
-            logger.info("Retrying WitAnime search directly (bypassing proxy)...")
-            
-        async with aiohttp.ClientSession(connector=connector) as session:
-            try:
-                html = await get_html(search_url, session)
-                soup = BeautifulSoup(html, "html.parser")
-                
-                details = soup.select(".anime-card-title a")
-                logger.info(f"Found {len(details)} posts matching search query on {WITANIME_DOMAIN}.")
-                
-                # Resolve parent series concurrently
-                resolve_tasks = []
-                direct_results = []
-                seen_slugs = set()
-                
-                for a in details:
-                    href = a.get("href")
-                    if "/anime/" in href:
-                        slug = href.split("/anime/")[1].strip("/")
-                        if slug not in seen_slugs:
-                            seen_slugs.add(slug)
-                            direct_results.append({"title": a.text.strip(), "slug": slug})
-                    elif "/episode/" in href:
-                        resolve_tasks.append(resolve_anime_info(href, session))
-                        
-                resolved = await asyncio.gather(*resolve_tasks)
-                for item in resolved:
-                    if item and item["slug"] not in seen_slugs:
-                        seen_slugs.add(item["slug"])
-                        direct_results.append(item)
-                        
-                logger.info(f"Resolved {len(direct_results)} unique anime series from search results.")
-                return direct_results[:10]  # Limit to top 10 results
-            except Exception as e:
-                if connector and ("proxy" in str(e).lower() or "socks" in str(e).lower() or "authentication failure" in str(e).lower()):
-                    logger.warning(f"Proxy failure during WitAnime search: {e}. Disabling proxy.")
-                    config.PROXY_URL = None
-                    if attempt == 0:
+    connector = get_connector()
+    async with aiohttp.ClientSession(connector=connector) as session:
+        for domain in WITANIME_DOMAINS:
+            for q_path in search_queries:
+                search_url = f"https://{domain}/{q_path.lstrip('/')}"
+                try:
+                    html = await get_html(search_url, session)
+                    if not html:
                         continue
-                logger.exception("Error in process while searching anime scraper")
-                break
-                
+                    soup = BeautifulSoup(html, "html.parser")
+                    details = soup.select(".anime-card-title a")
+                    if not details:
+                        details = soup.select(".anime-card-details a, .anime-card-poster a, h3 a")
+                    
+                    if details:
+                        logger.info(f"Found {len(details)} posts matching search query on {domain}.")
+                        resolve_tasks = []
+                        direct_results = []
+                        seen_slugs = set()
+                        
+                        for a in details:
+                            href = a.get("href", "")
+                            if "/anime/" in href:
+                                slug = href.split("/anime/")[1].strip("/")
+                                if slug not in seen_slugs:
+                                    seen_slugs.add(slug)
+                                    direct_results.append({"title": a.text.strip(), "slug": slug})
+                            elif "/episode/" in href:
+                                resolve_tasks.append(resolve_anime_info(href, session))
+                                
+                        resolved = await asyncio.gather(*resolve_tasks)
+                        for item in resolved:
+                            if item and item["slug"] not in seen_slugs:
+                                seen_slugs.add(item["slug"])
+                                direct_results.append(item)
+                                
+                        if direct_results:
+                            logger.info(f"Resolved {len(direct_results)} unique anime series from {domain}.")
+                            return direct_results[:10]
+                except Exception as e:
+                    logger.warning(f"Error searching {domain}: {e}")
+                    
+        # Direct slug resolution fallback if search queries returned empty
+        from app.utils.match import sanitize_search_query
+        possible_slug = sanitize_search_query(title).replace(" ", "-")
+        slug_candidates = [
+            possible_slug,
+            f"{possible_slug}-tv",
+            f"{possible_slug}-season-1"
+        ]
+        for domain in WITANIME_DOMAINS:
+            for slug_cand in slug_candidates:
+                test_url = f"https://{domain}/anime/{slug_cand}/"
+                try:
+                    async with session.get(test_url, headers=get_browser_headers(test_url), ssl=False, timeout=5) as resp:
+                        if resp.status == 200:
+                            logger.info(f"Direct slug fallback matched: {test_url}")
+                            return [{"title": title, "slug": slug_cand}]
+                except Exception:
+                    pass
+
     return []
 
 async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
@@ -312,16 +320,28 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
     duration = None
     
     async with aiohttp.ClientSession(connector=connector) as session:
+        active_domain = WITANIME_DOMAIN
+        # Determine working domain first
+        for domain in WITANIME_DOMAINS:
+            test_u = f"https://{domain}/anime/{anime_slug}/"
+            try:
+                async with session.get(test_u, headers=get_browser_headers(test_u), ssl=False, timeout=8) as r:
+                    if r.status == 200:
+                        active_domain = domain
+                        break
+            except Exception:
+                pass
+                
         page_num = 1
         while True:
             if page_num == 1:
-                url = f"https://{WITANIME_DOMAIN}/anime/{anime_slug}/"
+                url = f"https://{active_domain}/anime/{anime_slug}/"
             else:
-                url = f"https://{WITANIME_DOMAIN}/anime/{anime_slug}/page/{page_num}/"
+                url = f"https://{active_domain}/anime/{anime_slug}/page/{page_num}/"
                 
             try:
                 headers = get_browser_headers(url)
-                async with session.get(url, headers=headers, timeout=15) as response:
+                async with session.get(url, headers=headers, ssl=False, timeout=15) as response:
                     if response.status != 200:
                         logger.info(f"توقف جلب الصفحات عند الصفحة {page_num} بسبب رمز الحالة: {response.status}")
                         break
