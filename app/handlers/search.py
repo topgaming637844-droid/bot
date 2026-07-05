@@ -54,7 +54,7 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
             })
     else:
         logger.info(f"كاش غير متوفر للبحث: '{query}'. جاري الاستعلام من قواعد البيانات...")
-        status_msg = await message.answer("🔍 جاري تهيئة البحث.. anime")
+        status_msg = await message.answer("🔍 جاري فحص الفهرس السحابي.. anime")
         try:
             anilist_results = await search_anilist(query)
             await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)

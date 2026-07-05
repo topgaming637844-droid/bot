@@ -45,10 +45,15 @@ async def translate_to_arabic(text: str) -> Optional[str]:
         logger.warning(f"Failed to translate description to Arabic: {e}")
     return None
 
-# GraphQL query for searching anime directly
+import time
+
+SEARCH_MEMORY_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+CACHE_TTL = 3600  # 1 hour in-memory cache for 0-second instant search resolution
+
+# Optimized slim GraphQL query for searching anime directly
 MEDIA_QUERY = """
 query ($search: String) {
-  Page(page: 1, perPage: 10) {
+  Page(page: 1, perPage: 8) {
     media(search: $search, type: ANIME) {
       id
       title {
@@ -58,25 +63,20 @@ query ($search: String) {
       synonyms
       description
       coverImage {
-        extraLarge
         large
       }
       duration
-      episodes
     }
   }
 }
 """
 
-# GraphQL query for searching anime via character names
+# Optimized slim GraphQL query for searching anime via character names
 CHARACTER_QUERY = """
 query ($search: String) {
-  Page(page: 1, perPage: 5) {
+  Page(page: 1, perPage: 3) {
     characters(search: $search) {
-      name {
-        full
-      }
-      media(type: ANIME, perPage: 5) {
+      media(type: ANIME, perPage: 3) {
         nodes {
           id
           title {
@@ -86,11 +86,9 @@ query ($search: String) {
           synonyms
           description
           coverImage {
-            extraLarge
             large
           }
           duration
-          episodes
         }
       }
     }
@@ -109,14 +107,21 @@ def get_connector() -> Optional[ProxyConnector]:
 
 async def search_anilist(query: str) -> List[Dict[str, Any]]:
     """
-    Search AniList GraphQL API.
-    Resolves typos, Franco-Arabic, and character names into official titles.
+    Search Cloud Index API.
+    Resolves typos, Franco-Arabic, and character names into official titles with zero-second memory cache.
     """
-    # Translate Arabic queries to English first to ensure AniList GraphQL matching works
+    clean_key = query.strip().lower()
+    if clean_key in SEARCH_MEMORY_CACHE:
+        timestamp, cached_res = SEARCH_MEMORY_CACHE[clean_key]
+        if time.time() - timestamp < CACHE_TTL:
+            logger.info(f"Zero-second Memory Cache Hit for search query: '{query}'")
+            return cached_res
+
+    # Translate Arabic queries to English first to ensure matching works
     translated_query = await translate_to_english(query)
     search_query = translated_query if translated_query else query
     
-    logger.info(f"Starting search on AniList for query: {search_query} (original: {query})")
+    logger.info(f"Starting cloud index search for query: {search_query} (original: {query})")
     url = "https://graphql.anilist.co"
     
     for attempt in range(2):
@@ -178,7 +183,9 @@ async def search_anilist(query: str) -> List[Dict[str, Any]]:
                             raise e
                         logger.exception("Error in process while querying AniList characters API")
                         
-            logger.info(f"AniList search returned {len(results)} normalized titles.")
+            logger.info(f"Cloud index search returned {len(results)} normalized titles.")
+            if results:
+                SEARCH_MEMORY_CACHE[clean_key] = (time.time(), results)
             return results
             
         except Exception:
