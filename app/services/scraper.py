@@ -567,7 +567,8 @@ async def get_m3u8_from_embed(embed_url: str, session: Any, referer: Optional[st
             logger.info(f"Resolving mp4upload embed: {embed_url}")
             html = await fetch_url_content(embed_url, session, referer=referer)
             if html:
-                script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", html, re.DOTALL)
+                packed_pattern = r"eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[r|d]"
+                script_match = re.search(packed_pattern + r".*?\.split\s*\(\s*['\"][^'\"]*?['\"]\s*\)\s*\)\s*\)", html, re.DOTALL)
                 if script_match:
                     unpacked = unpack_dean_edwards(script_match.group(0))
                     mp4_matches = re.findall(r'https?://[^\s"\']+\.mp4[^\s"\']*', unpacked)
@@ -819,7 +820,8 @@ async def get_m3u8_from_embed(embed_url: str, session: Any, referer: Optional[st
                     return m3u8_direct.group(1)
 
                 # 3. Unpack Dean Edwards JS if present in yonaplay
-                script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", html, re.DOTALL)
+                packed_pattern = r"eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[r|d]"
+                script_match = re.search(packed_pattern + r".*?\.split\s*\(\s*['\"][^'\"]*?['\"]\s*\)\s*\)\s*\)", html, re.DOTALL)
                 if script_match:
                     unpacked = unpack_dean_edwards(script_match.group(0))
                     v_matches = re.findall(r'https?://[^\s"\']+\.(?:m3u8|mp4)[^\s"\']*', unpacked)
@@ -928,7 +930,8 @@ async def get_m3u8_from_embed(embed_url: str, session: Any, referer: Optional[st
                 return mp4_url
             
             # Check for Dean Edwards packed JS script in Playerwish / Streamwish layout
-            script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", text, re.DOTALL)
+            packed_pattern = r"eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[r|d]"
+            script_match = re.search(packed_pattern + r".*?\.split\s*\(\s*['\"][^'\"]*?['\"]\s*\)\s*\)\s*\)", text, re.DOTALL)
             if script_match:
                 unpacked = unpack_dean_edwards(script_match.group(0))
                 if unpacked is None or not isinstance(unpacked, (str, bytes)):
@@ -1098,6 +1101,16 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                             if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
                                 q_name = "480p"
                             resolved_links[q_name] = m3u8_master
+
+                        # Early break optimization for direct high-quality streaming URLs (archive.org or validated .mp4)
+                        has_high_quality_direct = False
+                        for q_val in resolved_links.values():
+                            if "archive.org" in q_val or ".mp4" in q_val or ".mkv" in q_val:
+                                has_high_quality_direct = True
+                                break
+                        if has_high_quality_direct:
+                            logger.info("Early break triggered: found high-quality direct link in resolved links.")
+                            break
         except Exception as e:
             logger.warning(f"Error parsing player registry links: {e}")
             
@@ -1160,7 +1173,7 @@ async def execute_blind_regex_harvest(raw_html: str, session: Any = None) -> Dic
     hls_matches = re.findall(r'https?://[^\s"\'\\<>]+?\.m3u8[^\s"\'\\<>]*', raw_html)
     
     # 2. Match standalone file lockers
-    locker_matches = re.findall(r'https?://(?:www\.)?(?:mega\.nz|drive\.google\.com|mp4upload\.com|ok\.ru|mediafire\.com)/[^\s"\'\\<>]+', raw_html)
+    locker_matches = re.findall(r'https?://(?:www\.)?(?:mega\.nz|drive\.google\.com|mp4upload\.com|ok\.ru|mediafire\.com|archive\.org)/[^\s"\'\\<>]+', raw_html)
     
     # Merge and deduplicate
     all_links = list(set(hls_matches + locker_matches))
