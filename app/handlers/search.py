@@ -183,7 +183,6 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
             await callback.message.edit_caption(caption="🔍 جاري جلب قائمة الحلقات...")
         except Exception:
             pass
-    
     try:
         anime_slug = None
         if cache_entry.title_romaji.startswith("WITANIME:"):
@@ -199,31 +198,14 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
                 pass
             else:
                 # Need to search slug on scraper
-                from app.utils.match import get_best_slug_match, sanitize_search_query
-                search_title = cache_entry.title_romaji or cache_entry.title_english
-                cleaned_title = sanitize_search_query(search_title)
+                from app.services.scraper import resolve_anime_slug_scraper
+                anime_slug = await resolve_anime_slug_scraper(
+                    title_romaji=cache_entry.title_romaji,
+                    title_english=cache_entry.title_english,
+                    synonyms=cache_entry.synonyms
+                )
                 
-                matched_query = cleaned_title
-                scraper_results = await search_anime_scraper(cleaned_title)
-                
-                if not scraper_results and cache_entry.title_english:
-                    cleaned_eng = sanitize_search_query(cache_entry.title_english)
-                    if cleaned_eng != cleaned_title:
-                        matched_query = cleaned_eng
-                        scraper_results = await search_anime_scraper(cleaned_eng)
-
-                # Fallback to synonyms from AniList if primary titles returned 0 results
-                if not scraper_results and cache_entry.synonyms:
-                    for syn in cache_entry.synonyms:
-                        cleaned_syn = sanitize_search_query(syn)
-                        if cleaned_syn and cleaned_syn != cleaned_title:
-                            logger.info(f"محاولة البحث بالمرادف المصاحب (Synonym): '{cleaned_syn}'")
-                            scraper_results = await search_anime_scraper(cleaned_syn)
-                            if scraper_results:
-                                matched_query = cleaned_syn
-                                break
-                        
-                if not scraper_results:
+                if not anime_slug:
                     try:
                         await callback.message.edit_text("❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
                     except TelegramBadRequest:
@@ -232,8 +214,6 @@ async def handle_anime_selection(callback: CallbackQuery, db_session: AsyncSessi
                         except Exception:
                             pass
                     return
-                    
-                anime_slug = get_best_slug_match(scraper_results, matched_query)
 
         scraped_data = None
         if anime_slug:

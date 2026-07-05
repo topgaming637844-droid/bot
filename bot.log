@@ -927,3 +927,163 @@ aiohttp_socks._errors.ProxyError: Username and password authentication failure
 [2026-07-05 16:56:57] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
 [2026-07-05 16:57:23] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
 [2026-07-05 16:58:00] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 17:39:47] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 17:39:47] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer: Kimetsu no Yaiba)
+[2026-07-05 17:39:47] [INFO] [bot] [scraper.py:360]: Starting search for anime: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer Kimetsu no Yaiba)
+[2026-07-05 17:39:48] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.life: Username and password authentication failure
+[2026-07-05 17:39:48] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:48] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:49] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:49] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:51] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.pics: Username and password authentication failure
+[2026-07-05 17:39:51] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:51] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:52] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:52] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:54] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.com: Username and password authentication failure
+[2026-07-05 17:39:54] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:54] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:54] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:54] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:56] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.red: Username and password authentication failure
+[2026-07-05 17:39:57] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:57] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:57] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:39:57] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:39:59] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.site: Username and password authentication failure
+[2026-07-05 17:40:00] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:00] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:00] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:00] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:08] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:40:08] [INFO] [bot] [scraper.py:360]: Starting search for anime: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:40:09] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.life: Username and password authentication failure
+[2026-07-05 17:40:10] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?search_param=animes&s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:10] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?search_param=animes&s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:11] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:11] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:13] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.pics: Username and password authentication failure
+[2026-07-05 17:40:14] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?search_param=animes&s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:14] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?search_param=animes&s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:14] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:14] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:16] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.com: Username and password authentication failure
+[2026-07-05 17:40:16] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?search_param=animes&s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:16] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?search_param=animes&s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:17] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:17] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:19] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.red: Username and password authentication failure
+[2026-07-05 17:40:19] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?search_param=animes&s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:19] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?search_param=animes&s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:20] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:20] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:20] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 17:40:20] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer: Kimetsu no Yaiba)
+[2026-07-05 17:40:20] [INFO] [bot] [scraper.py:360]: Starting search for anime: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer Kimetsu no Yaiba)
+[2026-07-05 17:40:20] [INFO] [bot] [scraper.py:178]: Successfully harvested session cookies from witanime.life
+[2026-07-05 17:40:22] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.site: Username and password authentication failure
+[2026-07-05 17:40:22] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?search_param=animes&s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:22] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?search_param=animes&s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:22] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?s=Kimetsu%20no%20Yaiba: Username and password authentication failure
+[2026-07-05 17:40:22] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?s=Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:28] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.pics: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:28] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:28] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:28] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:28] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:29] [INFO] [bot] [scraper.py:1187]: Searching WitAnime for split fallback: Demon Slayer (original: Demon Slayer)
+[2026-07-05 17:40:29] [INFO] [bot] [scraper.py:360]: Starting search for anime: Demon Slayer (original: Demon Slayer)
+[2026-07-05 17:40:29] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.life: Username and password authentication failure
+[2026-07-05 17:40:29] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.com: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.xyz:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?search_param=animes&s=Demon%20Slayer: Username and password authentication failure
+[2026-07-05 17:40:30] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?search_param=animes&s=Demon%20Slayer
+[2026-07-05 17:40:31] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.life/?s=Demon%20Slayer: Username and password authentication failure
+[2026-07-05 17:40:31] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.life/?s=Demon%20Slayer
+[2026-07-05 17:40:33] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.pics: Username and password authentication failure
+[2026-07-05 17:40:33] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?search_param=animes&s=Demon%20Slayer: Username and password authentication failure
+[2026-07-05 17:40:33] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?search_param=animes&s=Demon%20Slayer
+[2026-07-05 17:40:34] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.pics/?s=Demon%20Slayer: Username and password authentication failure
+[2026-07-05 17:40:34] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.pics/?s=Demon%20Slayer
+[2026-07-05 17:40:37] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.red: Cannot connect to host witanime.red:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:37] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.red:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:37] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:37] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.red:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:37] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:38] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.site: Cannot connect to host witanime.site:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:38] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.site:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:38] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?search_param=animes&s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:38] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba: Cannot connect to host witanime.site:443 ssl:False [getaddrinfo failed]
+[2026-07-05 17:40:38] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?s=Demon%20Slayer%20Kimetsu%20no%20Yaiba
+[2026-07-05 17:40:41] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.com: 
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:360]: Starting search for anime: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:178]: Successfully harvested session cookies from witanime.life
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:298]: Found 7 posts matching search query on witanime.life.
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:320]: Resolved 7 unique anime series from witanime.life.
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:1182]: Successfully resolved slug 'kimetsu-no-yaiba' for query: Kimetsu no Yaiba
+[2026-07-05 17:40:51] [INFO] [bot] [scraper.py:381]: جاري جلب قائمة الحلقات للأنمي: kimetsu-no-yaiba
+[2026-07-05 17:40:52] [INFO] [bot] [scraper.py:534]: تم جلب 26 حلقة جديدة من الصفحة 1
+[2026-07-05 17:40:52] [INFO] [bot] [scraper.py:531]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
+[2026-07-05 17:40:52] [INFO] [bot] [scraper.py:546]: إجمالي الحلقات المستخرجة للأنمي kimetsu-no-yaiba: 26
+[2026-07-05 17:40:54] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?search_param=animes&s=Demon%20Slayer: 
+[2026-07-05 17:40:54] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?search_param=animes&s=Demon%20Slayer
+[2026-07-05 17:41:06] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.com/?s=Demon%20Slayer: 
+[2026-07-05 17:41:06] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.com/?s=Demon%20Slayer
+[2026-07-05 17:41:14] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.red: 
+[2026-07-05 17:41:23] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-05 17:41:23] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer: Kimetsu no Yaiba)
+[2026-07-05 17:41:23] [INFO] [bot] [scraper.py:360]: Starting search for anime: Demon Slayer Kimetsu no Yaiba (original: Demon Slayer Kimetsu no Yaiba)
+[2026-07-05 17:41:24] [INFO] [bot] [scraper.py:178]: Successfully harvested session cookies from witanime.life
+[2026-07-05 17:41:25] [INFO] [bot] [scraper.py:1177]: Searching WitAnime for: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:41:25] [INFO] [bot] [scraper.py:360]: Starting search for anime: Kimetsu no Yaiba (original: Kimetsu no Yaiba)
+[2026-07-05 17:41:25] [INFO] [bot] [scraper.py:178]: Successfully harvested session cookies from witanime.life
+[2026-07-05 17:41:26] [INFO] [bot] [scraper.py:298]: Found 7 posts matching search query on witanime.life.
+[2026-07-05 17:41:26] [INFO] [bot] [scraper.py:320]: Resolved 7 unique anime series from witanime.life.
+[2026-07-05 17:41:26] [INFO] [bot] [scraper.py:1182]: Successfully resolved slug 'kimetsu-no-yaiba' for query: Kimetsu no Yaiba
+[2026-07-05 17:41:26] [INFO] [bot] [scraper.py:381]: جاري جلب قائمة الحلقات للأنمي: kimetsu-no-yaiba
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:534]: تم جلب 26 حلقة جديدة من الصفحة 1
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:531]: لم يتم العثور على حلقات جديدة في الصفحة 2. إيقاف جلب الصفحات.
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:546]: إجمالي الحلقات المستخرجة للأنمي kimetsu-no-yaiba: 26
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:974]: Scraping download links from watch page: https://witanime.life/episode/kimetsu-no-yaiba-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:808]: Resolving yonaplay aggregator from: https://yonaplay.net/embed.php?id=3152&apiKey=23a97133-caf3-4eb4-9466-93d0a4ff8198 with referer: https://witanime.life/episode/kimetsu-no-yaiba-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:842]: yonaplay found 2 player options
+[2026-07-05 17:41:27] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://soraplay.xyz/embed/zifhtaWAsc4eY/
+[2026-07-05 17:41:27] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?search_param=animes&s=Demon%20Slayer: 
+[2026-07-05 17:41:27] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?search_param=animes&s=Demon%20Slayer
+[2026-07-05 17:41:28] [INFO] [bot] [scraper.py:858]: Resolved video URL from dotplay: https://archive.org/download/1_20250703_20250703_2302/1.mp4
+[2026-07-05 17:41:28] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://hlswish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:29] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:29] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://swdyu.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:30] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:30] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://flaswish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:31] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:31] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://sfastwish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:32] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:32] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://obeywish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:33] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:33] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://jodwish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:34] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:34] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://embedwish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:35] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:35] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://cdnwish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:36] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:36] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://strwish.xyz/e/m0p2p0kz3t60
+[2026-07-05 17:41:38] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:38] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://awish.pro/e/m0p2p0kz3t60
+[2026-07-05 17:41:39] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://streamwish.to/e/m0p2p0kz3t60
+[2026-07-05 17:41:39] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://hlswish.com/e/m0p2p0kz3t60
+[2026-07-05 17:41:40] [WARNING] [bot] [scraper.py:943]: Unpacked payload returned None. Skipping regex parsing for this mirror.
+[2026-07-05 17:41:40] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://darkibox.com/embed-r1u12gzemne8.html
+[2026-07-05 17:41:40] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.red/?s=Demon%20Slayer: 
+[2026-07-05 17:41:40] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.red/?s=Demon%20Slayer
+[2026-07-05 17:41:42] [INFO] [bot] [scraper.py:922]: Attempting to resolve embed playlist from: https://luluvdo.com/e/ck0fdkf7z8o1
+[2026-07-05 17:41:42] [INFO] [bot] [scraper.py:1116]: Resolved 1 download link qualities: ['1080p']
+[2026-07-05 17:41:48] [WARNING] [bot] [scraper.py:182]: Failed harvesting cookies from witanime.site: 
+[2026-07-05 17:42:01] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?search_param=animes&s=Demon%20Slayer: 
+[2026-07-05 17:42:01] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?search_param=animes&s=Demon%20Slayer
+[2026-07-05 17:42:13] [WARNING] [bot] [scraper.py:204]: Session get failed for https://witanime.site/?s=Demon%20Slayer: 
+[2026-07-05 17:42:13] [WARNING] [bot] [scraper.py:215]: HTTP status 0 fetching https://witanime.site/?s=Demon%20Slayer

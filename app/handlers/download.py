@@ -70,22 +70,24 @@ async def process_episode_selection(message: Message, db_session: AsyncSession, 
             if title_romaji and title_romaji.startswith("WITANIME:"):
                 anime_slug = title_romaji.split(":", 1)[1]
             else:
-                # Search slug on scraper
-                search_title = title_romaji or title_english
-                scraper_results = await search_anime_scraper(search_title)
+                from app.database.models import SearchCache
+                stmt_cache = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
+                res_cache = await db_session.execute(stmt_cache)
+                cache_entry = res_cache.scalar_one_or_none()
+                synonyms = cache_entry.synonyms if cache_entry else None
                 
-                if not scraper_results:
-                    if title_english and title_english != title_romaji:
-                        logger.info(f"فشل البحث بالروماجي. إعادة المحاولة بالإنجليزية: {title_english}")
-                        scraper_results = await search_anime_scraper(title_english)
-                        
-                if not scraper_results:
-                    logger.warning(f"لم يتم العثور على الأنمي '{search_title}' في WitAnime.")
-                    await status_msg.edit_text("❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
-                    await state.clear()
-                    return
-                from app.utils.match import get_best_slug_match
-                anime_slug = get_best_slug_match(scraper_results, search_title)
+                from app.services.scraper import resolve_anime_slug_scraper
+                anime_slug = await resolve_anime_slug_scraper(
+                    title_romaji=title_romaji,
+                    title_english=title_english,
+                    synonyms=synonyms
+                )
+                
+            if not anime_slug:
+                logger.warning(f"لم يتم العثور على الأنمي '{anime_title}' في WitAnime.")
+                await status_msg.edit_text("❌ لم يتم العثور على هذا الأنمي في خوادم البث المساعدة.")
+                await state.clear()
+                return
             
             logger.info(f"اسم الأنمي اللطيف (Slug) على WitAnime: '{anime_slug}'")
             

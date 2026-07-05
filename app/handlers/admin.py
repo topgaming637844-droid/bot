@@ -342,17 +342,23 @@ async def cmd_post_episode(message: Message, db_session: AsyncSession):
                 duration = anime["duration"]
                 
             # Find slug on scraper
-            scraper_results = await search_anime_scraper(anime["title_romaji"])
-            if not scraper_results and anime["title_english"]:
-                scraper_results = await search_anime_scraper(anime["title_english"])
-            if scraper_results:
-                anime_slug = get_best_slug_match(scraper_results, anime["title_romaji"] or anime["title_english"])
+            from app.services.scraper import resolve_anime_slug_scraper
+            anime_slug = await resolve_anime_slug_scraper(
+                title_romaji=anime["title_romaji"],
+                title_english=anime["title_english"],
+                synonyms=anime.get("synonyms")
+            )
         else:
             # Fallback direct search on scraper
-            scraper_results = await search_anime_scraper(anime_query)
-            if scraper_results:
-                anime_slug = get_best_slug_match(scraper_results, anime_query)
-                anime_title = scraper_results[0]["title"]
+            from app.services.scraper import resolve_anime_slug_scraper
+            anime_slug = await resolve_anime_slug_scraper(
+                title_romaji=anime_query,
+                title_english=anime_query
+            )
+            if anime_slug:
+                scraper_results = await search_anime_scraper(anime_query)
+                if scraper_results:
+                    anime_title = scraper_results[0]["title"]
                 
         if not anime_slug:
             await status_msg.edit_text("❌ لم يتم العثور على الأنمي في خوادم البث المساعدة.")

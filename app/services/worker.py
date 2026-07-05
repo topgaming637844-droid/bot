@@ -263,20 +263,13 @@ async def self_heal_episode_cache(
         if cache_entry.title_romaji and cache_entry.title_romaji.startswith("WITANIME:"):
             anime_slug = cache_entry.title_romaji.split(":", 1)[1]
         else:
-            search_title = cache_entry.title_romaji or cache_entry.title_english or anime_title
-            cleaned_title = sanitize_search_query(search_title)
+            from app.services.scraper import resolve_anime_slug_scraper
+            anime_slug = await resolve_anime_slug_scraper(
+                title_romaji=cache_entry.title_romaji,
+                title_english=cache_entry.title_english,
+                synonyms=cache_entry.synonyms
+            )
             
-            matched_query = cleaned_title
-            scraper_results = await search_anime_scraper(cleaned_title)
-            
-            if not scraper_results and cache_entry.title_english:
-                cleaned_eng = sanitize_search_query(cache_entry.title_english)
-                if cleaned_eng != cleaned_title:
-                    scraper_results = await search_anime_scraper(cleaned_eng)
-                    
-            if scraper_results:
-                anime_slug = get_best_slug_match(scraper_results, cleaned_title)
-                
         if not anime_slug:
             logger.error(f"Self-healing failed: Could not find matching WitAnime slug for {anime_title}")
             return None

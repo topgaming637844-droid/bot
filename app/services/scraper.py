@@ -143,7 +143,7 @@ def get_global_cookie_jar() -> aiohttp.CookieJar:
         GLOBAL_COOKIE_JAR = aiohttp.CookieJar()
     return GLOBAL_COOKIE_JAR
 
-WITANIME_DOMAINS = ["witanime.life", "witanime.pics", "witanime.com", "witanime.red", "witanime.site"]
+WITANIME_DOMAINS = ["witanime.life"]
 
 def get_browser_headers(referer: str = f"https://{WITANIME_DOMAIN}/") -> dict:
     return {
@@ -181,89 +181,93 @@ async def harvest_session_cookies(domain: str, session: Any):
     except Exception as e:
         logger.warning(f"Failed harvesting cookies from {domain}: {e}")
 
-async def get_html(url: str, session: Any) -> str:
-    """Fetches HTML content with browser headers and cookie session."""
-    headers = get_browser_headers(url)
-    logger.info(f"Scraping page: {url}")
-    
+async def session_get_response(session: Any, url: str, headers: Optional[dict] = None, timeout: int = 10):
+    """
+    Returns a unified tuple (status_code, body_content, text_content, headers_dict)
+    compatible with both curl_cffi and aiohttp.
+    """
+    if headers is None:
+        headers = get_browser_headers(url)
     try:
         if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-            response = await session.get(url, headers=headers, timeout=12)
-            if response.status_code == 200:
-                return response.text
-            elif response.status_code == 403:
-                logger.warning(f"HTTP 403 Forbidden encountered on {url}. Cloudflare protection active.")
-                return "STATUS_403_FORBIDDEN"
-            logger.warning(f"HTTP status {response.status_code} fetching {url}")
-            return ""
+            resp = await session.get(url, headers=headers, timeout=timeout)
+            return resp.status_code, resp.content, resp.text, resp.headers
         else:
-            async with session.get(url, headers=headers, ssl=False, timeout=12) as response:
-                if response.status == 200:
-                    return await response.text()
-                elif response.status == 403:
-                    logger.warning(f"HTTP 403 Forbidden encountered on {url}. Cloudflare protection active.")
-                    return "STATUS_403_FORBIDDEN"
-                logger.warning(f"HTTP status {response.status} fetching {url}")
-                return ""
+            async with session.get(url, headers=headers, ssl=False, timeout=timeout) as resp:
+                body = await resp.read()
+                try:
+                    text = body.decode('utf-8')
+                except Exception:
+                    text = body.decode('latin-1', errors='ignore')
+                return resp.status, body, text, resp.headers
     except Exception as e:
-        logger.warning(f"Connection failed for {url}: {e}")
-        return ""
+        logger.warning(f"Session get failed for {url}: {e}")
+        return 0, b'', '', {}
 
-async def resolve_anime_info(ep_url: str, session: aiohttp.ClientSession) -> Optional[Dict[str, str]]:
+async def get_html(url: str, session: Any) -> str:
+    """Fetches HTML content with browser headers and cookie session."""
+    status, _, text, _ = await session_get_response(session, url, timeout=12)
+    if status == 403:
+        logger.warning(f"HTTP 403 Forbidden encountered on {url}. Cloudflare protection active.")
+        return "STATUS_403_FORBIDDEN"
+    if status == 200:
+        return text
+    logger.warning(f"HTTP status {status} fetching {url}")
+    return ""
+
+async def resolve_anime_info(ep_url: str, session: Any) -> Optional[Dict[str, str]]:
     """Resolves parent anime details page from an episode watch page URL."""
     headers = get_browser_headers(ep_url)
     try:
-        async with session.get(ep_url, headers=headers, ssl=False, timeout=10) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                match = re.search(r'href="https://[^/]+/anime/([^/"]+)/"', text)
-                if match:
-                    slug = match.group(1)
-                    soup = BeautifulSoup(text, "html.parser")
-                    anime_link = soup.find("a", href=lambda h: h and f"/anime/{slug}/" in h)
-                    title = anime_link.text.strip() if anime_link else slug.replace("-", " ").title()
-                    return {"title": title, "slug": slug}
+        status, _, text, _ = await session_get_response(session, ep_url, headers=headers, timeout=10)
+        if status == 200:
+            match = re.search(r'href="https://[^/]+/anime/([^/"]+)/"', text)
+            if match:
+                slug = match.group(1)
+                soup = BeautifulSoup(text, "html.parser")
+                anime_link = soup.find("a", href=lambda h: h and f"/anime/{slug}/" in h)
+                title = anime_link.text.strip() if anime_link else slug.replace("-", " ").title()
+                return {"title": title, "slug": slug}
     except Exception:
         logger.exception(f"Error in process: failed to resolve parent anime from {ep_url}")
     return None
 
-async def parse_m3u8_qualities(master_url: str, session: aiohttp.ClientSession) -> Dict[str, str]:
+async def parse_m3u8_qualities(master_url: str, session: Any) -> Dict[str, str]:
     """Parses master .m3u8 playlist to extract quality variant URLs."""
     headers = get_browser_headers(master_url)
     qualities = {}
     try:
-        async with session.get(master_url, headers=headers, ssl=False, timeout=10) as response:
-            if response.status != 200:
-                logger.error(f"Error in process: master playlist returned status {response.status}")
-                return {}
-            data = await response.read()
-            if data.startswith(b"\x89PNG"):
-                data = data[252:]
-            text = data.decode("utf-8")
+        status, data, text, _ = await session_get_response(session, master_url, headers=headers, timeout=10)
+        if status != 200:
+            logger.error(f"Error in process: master playlist returned status {status}")
+            return {}
+        if data.startswith(b"\x89PNG"):
+            data = data[252:]
+            text = data.decode("utf-8", errors="ignore")
             
-            if "#EXTINF:" in text:
-                logger.info("Playlist is a direct single-quality variant HLS stream.")
-                return {"720p": master_url}
-                
-            lines = text.splitlines()
-            current_info = None
-            for line in lines:
-                line = line.strip()
-                if line.startswith("#EXT-X-STREAM-INF:"):
-                    match_res = re.search(r'RESOLUTION=(\d+x\d+)', line)
-                    match_name = re.search(r'NAME="([^"]+)"', line)
-                    if match_name:
-                        current_info = normalize_quality_name(match_name.group(1))
-                    elif match_res:
-                        height = match_res.group(1).split("x")[1]
-                        current_info = normalize_quality_name(f"{height}p")
-                elif line and not line.startswith("#"):
-                    if current_info:
-                        variant_url = urljoin(master_url, line)
-                        qualities[current_info] = variant_url
-                        current_info = None
-                        
-            logger.info(f"Parsed qualities from master playlist: {list(qualities.keys())}")
+        if "#EXTINF:" in text:
+            logger.info("Playlist is a direct single-quality variant HLS stream.")
+            return {"720p": master_url}
+            
+        lines = text.splitlines()
+        current_info = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("#EXT-X-STREAM-INF:"):
+                match_res = re.search(r'RESOLUTION=(\d+x\d+)', line)
+                match_name = re.search(r'NAME="([^"]+)"', line)
+                if match_name:
+                    current_info = normalize_quality_name(match_name.group(1))
+                elif match_res:
+                    height = match_res.group(1).split("x")[1]
+                    current_info = normalize_quality_name(f"{height}p")
+            elif line and not line.startswith("#"):
+                if current_info:
+                    variant_url = urljoin(master_url, line)
+                    qualities[current_info] = variant_url
+                    current_info = None
+                    
+        logger.info(f"Parsed qualities from master playlist: {list(qualities.keys())}")
     except Exception:
         logger.exception(f"Error in process while parsing master playlist {master_url}")
     return qualities
@@ -384,129 +388,134 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
             "duration": "24 دقيقة"
         }
 
-    connector = get_connector()
+    if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+        logger.info("Using curl_cffi for get_episodes_scraper")
+        async with CurlAsyncSession(impersonate="chrome120") as session:
+            return await _run_get_episodes(session, anime_slug)
+    else:
+        connector = get_connector()
+        async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+            return await _run_get_episodes(session, anime_slug)
+
+async def _run_get_episodes(session: Any, anime_slug: str) -> Dict[str, Any]:
     episodes = []
     seen_urls = set()
-    
     poster_url = None
     description = None
     duration = None
     
-    async with aiohttp.ClientSession(connector=connector) as session:
-        active_domain = WITANIME_DOMAIN
-        # Determine working domain first
-        for domain in WITANIME_DOMAINS:
-            test_u = f"https://{domain}/anime/{anime_slug}/"
+    active_domain = WITANIME_DOMAIN
+    # Determine working domain first
+    for domain in WITANIME_DOMAINS:
+        test_u = f"https://{domain}/anime/{anime_slug}/"
+        try:
+            html = await get_html(test_u, session)
+            if html == "STATUS_403_FORBIDDEN":
+                raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
+            if html:
+                active_domain = domain
+                break
+        except ScraperError:
+            raise
+        except Exception:
+            pass
+            
+    page_num = 1
+    while True:
+        if page_num == 1:
+            url = f"https://{active_domain}/anime/{anime_slug}/"
+        else:
+            url = f"https://{active_domain}/anime/{anime_slug}/page/{page_num}/"
+            
+        try:
+            html = await get_html(url, session)
+            if html == "STATUS_403_FORBIDDEN":
+                raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
+            if not html:
+                logger.info(f"توقف جلب الصفحات عند الصفحة {page_num} بسبب محتوى فارغ")
+                break
+        except ScraperError:
+            raise
+        except Exception as e:
+            logger.warning(f"فشل الاتصال بالصفحة {page_num}: {e}")
+            break
+
+        if page_num == 1:
             try:
-                async with session.get(test_u, headers=get_browser_headers(test_u), ssl=False, timeout=8) as r:
-                    if r.status == 403:
-                        raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
-                    if r.status == 200:
-                        active_domain = domain
-                        break
-            except ScraperError:
-                raise
+                soup = BeautifulSoup(html, "html.parser")
+                # 1. Parse high-res poster
+                img_el = soup.select_one(".anime-thumbnail img, .anime-info-right img, img.thumbnail")
+                if img_el:
+                    img_src = img_el.get("src") or img_el.get("data-src")
+                    if img_src and "default" not in img_src:
+                        for old_domain in ["witanime.pics", "witanime.you", "witanime.xyz"]:
+                            img_src = img_src.replace(f"https://{old_domain}", f"https://{WITANIME_DOMAIN}")
+                        poster_url = img_src
+                        
+                # 2. Parse description/story
+                story_el = soup.select_one(".anime-story, p.anime-story, .story")
+                if story_el:
+                    description = story_el.text.strip()
+                    
+                # 3. Parse duration safely
+                duration_val = None
+                span_el = soup.find(lambda tag: tag.name == "span" and "مدة الحلقة" in tag.text)
+                if span_el:
+                    parent = span_el.parent
+                    if parent:
+                        duration_val = parent.text.replace(span_el.text, "").replace(":", "").strip()
+                if not duration_val:
+                    match_dur = re.search(r'<span>مدة الحلقة:</span>\s*([^<\n]+)', html)
+                    if match_dur:
+                        duration_val = match_dur.group(1).strip()
+                if not duration_val:
+                    div_el = soup.find(lambda tag: tag.name == "div" and "مدة الحلقة:" in tag.text)
+                    if div_el and len(div_el.text) < 150:
+                        duration_val = div_el.text.replace("مدة الحلقة:", "").strip()
+                        
+                if duration_val:
+                    duration_val = " ".join(duration_val.split())
+                    duration = duration_val[:90]
+            except Exception as ex:
+                logger.warning(f"Failed to parse anime page metadata: {ex}")
+
+        # Try encodedEpisodeData (base64 JSON) first, then processedEpisodeData (XOR encrypted)
+        episodes_data = None
+        encoded_match = re.search(r"var encodedEpisodeData = '([^']+)';", html)
+        if encoded_match:
+            try:
+                decoded_json = safe_b64decode(encoded_match.group(1)).decode("utf-8")
+                episodes_data = json.loads(decoded_json)
             except Exception:
                 pass
-                
-        page_num = 1
-        while True:
-            if page_num == 1:
-                url = f"https://{active_domain}/anime/{anime_slug}/"
-            else:
-                url = f"https://{active_domain}/anime/{anime_slug}/page/{page_num}/"
-                
-            try:
-                headers = get_browser_headers(url)
-                async with session.get(url, headers=headers, ssl=False, timeout=15) as response:
-                    if response.status == 403:
-                        raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
-                    if response.status != 200:
-                        logger.info(f"توقف جلب الصفحات عند الصفحة {page_num} بسبب رمز الحالة: {response.status}")
-                        break
-                    html = await response.text()
-            except ScraperError:
-                raise
-            except Exception as e:
-                logger.warning(f"فشل الاتصال بالصفحة {page_num}: {e}")
-                break
-
-            if page_num == 1:
+        
+        if not episodes_data:
+            enc_match = re.search(r"var processedEpisodeData = '([^']+)';", html)
+            if enc_match:
                 try:
-                    soup = BeautifulSoup(html, "html.parser")
-                    # 1. Parse high-res poster
-                    img_el = soup.select_one(".anime-thumbnail img, .anime-info-right img, img.thumbnail")
-                    if img_el:
-                        img_src = img_el.get("src") or img_el.get("data-src")
-                        if img_src and "default" not in img_src:
-                            # Normalize any old domain references to current domain
-                            for old_domain in ["witanime.pics", "witanime.you", "witanime.xyz"]:
-                                img_src = img_src.replace(f"https://{old_domain}", f"https://{WITANIME_DOMAIN}")
-                            poster_url = img_src
-                            
-                    # 2. Parse description/story
-                    story_el = soup.select_one(".anime-story, p.anime-story, .story")
-                    if story_el:
-                        description = story_el.text.strip()
-                        
-                    # 3. Parse duration safely and defensively
-                    duration_val = None
-                    span_el = soup.find(lambda tag: tag.name == "span" and "مدة الحلقة" in tag.text)
-                    if span_el:
-                        parent = span_el.parent
-                        if parent:
-                            duration_val = parent.text.replace(span_el.text, "").replace(":", "").strip()
-                    if not duration_val:
-                        match_dur = re.search(r'<span>مدة الحلقة:</span>\s*([^<\n]+)', html)
-                        if match_dur:
-                            duration_val = match_dur.group(1).strip()
-                    if not duration_val:
-                        div_el = soup.find(lambda tag: tag.name == "div" and "مدة الحلقة:" in tag.text)
-                        if div_el and len(div_el.text) < 150:
-                            duration_val = div_el.text.replace("مدة الحلقة:", "").strip()
-                            
-                    if duration_val:
-                        duration_val = " ".join(duration_val.split())
-                        duration = duration_val[:90]
-                except Exception as ex:
-                    logger.warning(f"Failed to parse anime page metadata: {ex}")
-
-            # Try encodedEpisodeData (base64 JSON) first, then processedEpisodeData (XOR encrypted)
-            episodes_data = None
-            encoded_match = re.search(r"var encodedEpisodeData = '([^']+)';", html)
-            if encoded_match:
-                try:
-                    decoded_json = safe_b64decode(encoded_match.group(1)).decode("utf-8")
-                    episodes_data = json.loads(decoded_json)
-                    logger.info(f"Decoded {len(episodes_data)} episodes from encodedEpisodeData")
+                    episodes_data = decrypt_episodes(enc_match.group(1))
                 except Exception:
-                    logger.warning("Failed to decode encodedEpisodeData, trying processedEpisodeData...")
-            
-            if not episodes_data:
-                match = re.search(r"var processedEpisodeData = '([^']+)';", html)
-                if match:
-                    episodes_data = decrypt_episodes(match.group(1))
+                    pass
+        
+        if not episodes_data:
+            # Traditional DOM parsing for episodes if JS variables aren't found
+            soup = BeautifulSoup(html, "html.parser")
+            ep_elements = soup.select(".episodes-card-title a, .episodes-list a, .episode-card a, .episodes-grid a")
+            if ep_elements:
+                episodes_data = []
+                for a in ep_elements:
+                    href = a.get("href", "")
+                    text = a.text.strip()
+                    ep_match = re.search(r'(\d+)', text)
+                    ep_num = ep_match.group(1) if ep_match else "1"
+                    episodes_data.append({"number": ep_num, "url": href})
                     
-            if not episodes_data:
-                if page_num == 1:
-                    logger.info(f"لم يتم العثور على بيانات حلقات للأنمي {anime_slug}. يتم التعامل معه كفيلم فردي.")
-                    return {
-                        "episodes": [{
-                            "ep_number": "1",
-                            "play_url": f"https://{WITANIME_DOMAIN}/anime/{anime_slug}/"
-                        }],
-                        "poster_url": poster_url,
-                        "description": description,
-                        "duration": duration
-                    }
-                else:
-                    break
-                
+        if episodes_data:
+            # Filter and add
             new_episodes_found = 0
             for ep in episodes_data:
                 ep_num = str(ep.get("number"))
                 play_url = ep.get("url")
-                # Normalize any old domain references to current domain
                 for old_domain in ["witanime.pics", "witanime.you", "witanime.xyz"]:
                     play_url = play_url.replace(f"https://{old_domain}", f"https://{WITANIME_DOMAIN}")
                 
@@ -524,6 +533,8 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
                 
             logger.info(f"تم جلب {new_episodes_found} حلقة جديدة من الصفحة {page_num}")
             page_num += 1
+        else:
+            break
             
     def get_ep_num(e):
         try:
@@ -556,7 +567,7 @@ async def fetch_url_content(url: str, session: Any, referer: Optional[str] = Non
         logger.warning(f"Error fetching URL content for {url}: {e}")
     return ""
 
-async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, referer: Optional[str] = None) -> Optional[str]:
+async def get_m3u8_from_embed(embed_url: str, session: Any, referer: Optional[str] = None) -> Optional[str]:
     """Resolves and extracts .m3u8 master playlist or direct video file using custom player unpacker."""
     # mp4upload embed: parse video.src or Dean Edwards packed JS
     if "mp4upload.com" in embed_url or "mp4upload" in embed_url:
@@ -654,12 +665,11 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
                 "Referer": embed_url
             }
             
-            async with session.get(xml_url, headers=xml_headers, ssl=False, timeout=10) as xml_resp:
-                if xml_resp.status != 200:
-                    logger.warning(f"Failed to fetch Videa XML: {xml_resp.status}")
-                    return None
-                body = await xml_resp.read()
-                x_videa_xs = xml_resp.headers.get("x-videa-xs")
+            status, body, _, headers = await session_get_response(session, xml_url, headers=xml_headers, timeout=10)
+            if status != 200:
+                logger.warning(f"Failed to fetch Videa XML: {status}")
+                return None
+            x_videa_xs = headers.get("x-videa-xs")
                 
             if body.startswith(b'<?xml'):
                 xml_text = body.decode('utf-8')
@@ -734,14 +744,7 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
             logger.info(f"Resolving ok.ru embed: {embed_url}")
             headers = get_browser_headers(embed_url)
             text = ""
-            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-                resp = await session.get(embed_url, headers=headers, timeout=10)
-                if resp.status_code == 200:
-                    text = resp.text
-            else:
-                async with session.get(embed_url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as resp:
-                    if resp.status == 200:
-                        text = await resp.text()
+            status, _, text, _ = await session_get_response(session, embed_url, headers=headers, timeout=10)
 
             if text:
                 import html as html_lib
@@ -918,51 +921,50 @@ async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, re
     for url in target_urls:
         logger.info(f"Attempting to resolve embed playlist from: {url}")
         try:
-            async with session.get(url, headers=get_browser_headers(url), ssl=False, timeout=10) as response:
-                if response.status != 200:
+            status, _, text, _ = await session_get_response(session, url, timeout=10)
+            if status != 200:
+                continue
+            text = text.replace("\\/", "/")
+                
+            # Check for direct mp4 match first
+            mp4_match = re.search(r'src\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', text)
+            if not mp4_match:
+                mp4_match = re.search(r'["\']?file["\']?\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', text)
+            if mp4_match:
+                mp4_url = mp4_match.group(1)
+                logger.info(f"Resolved direct MP4 stream: {mp4_url}")
+                return mp4_url
+            
+            # Check for Dean Edwards packed JS script in Playerwish / Streamwish layout
+            script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", text, re.DOTALL)
+            if script_match:
+                unpacked = unpack_dean_edwards(script_match.group(0))
+                if unpacked is None or not isinstance(unpacked, (str, bytes)):
+                    logger.warning("Unpacked payload returned None. Skipping regex parsing for this mirror.")
                     continue
-                text = await response.text()
-                text = text.replace("\\/", "/")
-                
-                # Check for direct mp4 match first
-                mp4_match = re.search(r'src\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', text)
-                if not mp4_match:
-                    mp4_match = re.search(r'["\']?file["\']?\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', text)
-                if mp4_match:
-                    mp4_url = mp4_match.group(1)
-                    logger.info(f"Resolved direct MP4 stream: {mp4_url}")
-                    return mp4_url
-                
-                # Check for Dean Edwards packed JS script in Playerwish / Streamwish layout
-                script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", text, re.DOTALL)
-                if script_match:
-                    unpacked = unpack_dean_edwards(script_match.group(0))
-                    if unpacked is None or not isinstance(unpacked, (str, bytes)):
-                        logger.warning("Unpacked payload returned None. Skipping regex parsing for this mirror.")
-                        continue
-                    m3u8_matches = re.findall(r'https?://[^\s"\']+\.m3u8[^\s"\']*', unpacked)
-                    if m3u8_matches:
-                        m3u8_url = m3u8_matches[0]
-                        logger.info(f"Resolved streamwish mirror HLS stream from unpacked JS: {m3u8_url}")
-                        return m3u8_url
-                    direct_file = re.search(r'file\s*:\s*["\'](https?://[^"\']+)["\']', unpacked)
-                    if direct_file:
-                        logger.info(f"Resolved streamwish direct file from unpacked JS: {direct_file.group(1)}")
-                        return direct_file.group(1)
-                
-                # Regular regex search inside non-packed body
-                match = re.search(r'const\s+src\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']', text)
-                if not match:
-                    match = re.search(r'src\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']', text)
-                if not match:
-                    match = re.search(r'["\']([^"\']+\.m3u8[^"\']*)["\']', text)
-                if match:
-                    m3u8_url = match.group(1)
-                    if m3u8_url.startswith('http') and len(m3u8_url) < 2000:
-                        logger.info(f"Resolved master .m3u8 playlist: {m3u8_url}")
-                        return m3u8_url
-                    else:
-                        logger.warning(f"Skipping invalid m3u8 match (len={len(m3u8_url)}): not a valid URL")
+                m3u8_matches = re.findall(r'https?://[^\s"\']+\.m3u8[^\s"\']*', unpacked)
+                if m3u8_matches:
+                    m3u8_url = m3u8_matches[0]
+                    logger.info(f"Resolved streamwish mirror HLS stream from unpacked JS: {m3u8_url}")
+                    return m3u8_url
+                direct_file = re.search(r'file\s*:\s*["\'](https?://[^"\']+)["\']', unpacked)
+                if direct_file:
+                    logger.info(f"Resolved streamwish direct file from unpacked JS: {direct_file.group(1)}")
+                    return direct_file.group(1)
+            
+            # Regular regex search inside non-packed body
+            match = re.search(r'const\s+src\s*=\s*["\']([^"\']+\.m3u8[^"\']*)["\']', text)
+            if not match:
+                match = re.search(r'src\s*:\s*["\']([^"\']+\.m3u8[^"\']*)["\']', text)
+            if not match:
+                match = re.search(r'["\']([^"\']+\.m3u8[^"\']*)["\']', text)
+            if match:
+                m3u8_url = match.group(1)
+                if m3u8_url.startswith('http') and len(m3u8_url) < 2000:
+                    logger.info(f"Resolved master .m3u8 playlist: {m3u8_url}")
+                    return m3u8_url
+                else:
+                    logger.warning(f"Skipping invalid m3u8 match (len={len(m3u8_url)}): not a valid URL")
         except Exception:
             logger.exception(f"Error in process while resolving mirror embed URL {url}")
     return None
@@ -977,136 +979,218 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
             "720p": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_10MB.mp4?mock_size=2200000000",
         }
 
-    connector = get_connector()
-    async with aiohttp.ClientSession(connector=connector) as session:
-        try:
-            # Normalize play URL domain
-            if "witanime.you" in play_url:
-                play_url = play_url.replace("https://witanime.you", f"https://{WITANIME_DOMAIN}")
-                
-            html = await get_html(play_url, session)
-            
-            # Find server labels/names inside DOM
-            soup = BeautifulSoup(html, "html.parser")
-            
-            # Try a broader and more resilient list of selectors for server elements
-            servers = []
-            for sel in [
-                "#episode-servers li", ".episode-servers li", "ul.servers-list li", ".servers-list li", 
-                "#watch-servers li", "li.server", "#episode-servers a", ".episode-servers a", 
-                "#watch-servers a", "ul.servers-list a", ".servers-list a",
-                ".server-list li", "#servers-list li", "div.watch-servers li", ".tab-content .server-item", "ul li[data-server]"
-            ]:
-                found = soup.select(sel)
-                if found:
-                    servers = found
-                    break
-            
-            server_names = [s.text.strip().lower() for s in servers]
-            
-            # Extract player registry keys
-            zx_match = re.search(r'var _zX="([^"]+)"', html)
-            zk_match = re.search(r'var _zK="([^"]+)"', html)
-            
-            if not zx_match or not zk_match:
-                logger.warning("Failed to locate player registries (_zX / _zK) on watch page")
-                return {}
-                
-            resources = json.loads(safe_b64decode(zx_match.group(1)).decode("utf-8"))
-            configs = json.loads(safe_b64decode(zk_match.group(1)).decode("utf-8"))
-            
-            resolved_links = {}
-            hls_indices = []
-            other_indices = []
-            direct_indices = []
-            
-            for idx, (res, conf) in enumerate(zip(resources, configs)):
-                s_name = server_names[idx] if idx < len(server_names) else ""
-                # Prioritize active HLS streaming mirrors at the top of the queue
-                if any(x in s_name for x in ["streamwish", "yona", "yonaplay", "videa", "hglink", "soraplay", "sorastream", "hanerix"]):
-                    hls_indices.append(idx)
-                # Push direct file hosts to the absolute bottom of the queue
-                elif "mp4upload" in s_name or "yourupload" in s_name:
-                    direct_indices.append(idx)
-                else:
-                    other_indices.append(idx)
-                    
-            for idx in hls_indices + other_indices + direct_indices:
-                res = resources[idx]
-                conf = configs[idx]
-                s_name = server_names[idx] if idx < len(server_names) else ""
-                embed_url = decrypt_resource(res, conf)
-                if embed_url:
-                    m3u8_master = await get_m3u8_from_embed(embed_url, session, referer=play_url)
-                    if m3u8_master:
-                        if m3u8_master.startswith("{"):
-                            try:
-                                qualities = json.loads(m3u8_master)
-                                resolved_links.update(qualities)
-                            except Exception:
-                                pass
-                        elif ".m3u8" in m3u8_master:
-                            qualities = await parse_m3u8_qualities(m3u8_master, session)
-                            resolved_links.update(qualities)
-                        else:
-                            # Direct MP4 file link resolved from mirror!
-                            q_name = normalize_quality_name(s_name) if s_name else "480p"
-                            if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                                q_name = "480p"
-                            resolved_links[q_name] = m3u8_master
-                            
-            if not resolved_links:
-                logger.info("HLS/Embed parsing yielded 0 links. Scraping fallback download table buttons on watch page...")
-                download_btns = soup.select(".download-links a, table.download-table a, a.download-link, .download-item a, .download-list a, .dlinks a, .quality-download a, .quality-box a")
-                if not download_btns:
-                    download_btns = soup.find_all("a", href=lambda h: h and any(x in str(h).lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru"]))
-                if not download_btns:
-                    download_btns = soup.find_all("a", href=True)
-                    
-                for a in download_btns:
-                    href = a.get("href")
-                    if href and href.startswith("http"):
-                        label = (a.text.strip() + " " + str(a.get("class", "")) + " " + href).lower()
-                        if not any(x in href.lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru", "mail.ru", "streamwish"]):
-                            continue
-                            
-                        q_name = normalize_quality_name(label)
-                        if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                            if "1080" in label or "fhd" in label or "جودة خارقة" in label:
-                                q_name = "1080p"
-                            elif "720" in label or "hd" in label or "جودة عالية" in label:
-                                q_name = "720p"
-                            elif "360" in label or "sd" in label or "جودة كافية" in label:
-                                q_name = "360p"
-                            else:
-                                q_name = "480p"
+    if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+        logger.info("Using curl_cffi for get_download_links_scraper")
+        async with CurlAsyncSession(impersonate="chrome120") as session:
+            return await _run_get_download_links(session, play_url)
+    else:
+        connector = get_connector()
+        async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+            return await _run_get_download_links(session, play_url)
 
-                        # Follow shortlink redirects (e.g. go.witanime.life) to get raw stream/download link
-                        final_url = href
-                        if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
-                            try:
-                                logger.info(f"Following shortlink redirect for fallback download link: {href}")
-                                headers = get_browser_headers(href)
-                                if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-                                    resp = await session.get(href, headers=headers, timeout=8)
-                                    if resp.url:
-                                        final_url = str(resp.url)
-                                else:
-                                    async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
-                                        final_url = str(resp.url)
-                                logger.info(f"Resolved shortlink final destination: {final_url}")
-                            except Exception as ex:
-                                logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
-
-                        if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
-                            resolved_links[q_name] = final_url
-                            
-            if not resolved_links:
-                logger.warning("Failed to parse working HLS streams or direct video files from embed servers or download table")
-                return {}
-                
-            logger.info(f"Resolved {len(resolved_links)} download link qualities: {list(resolved_links.keys())}")
-            return resolved_links
-        except Exception:
-            logger.exception("Error in process while scraping download links")
+async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]:
+    try:
+        # Normalize play URL domain
+        if "witanime.you" in play_url:
+            play_url = play_url.replace("https://witanime.you", f"https://{WITANIME_DOMAIN}")
+            
+        html = await get_html(play_url, session)
+        if html == "STATUS_403_FORBIDDEN":
+            raise ScraperError("CLOUDFLARE_BLOCK: The helper streaming site (witanime.life) is protected by Cloudflare and returned 403 Forbidden.")
+            
+        # Find server labels/names inside DOM
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Try a broader and more resilient list of selectors for server elements
+        servers = []
+        for sel in [
+            "#episode-servers li", ".episode-servers li", "ul.servers-list li", ".servers-list li", 
+            "#watch-servers li", "li.server", "#episode-servers a", ".episode-servers a", 
+            "#watch-servers a", "ul.servers-list a", ".servers-list a",
+            ".server-list li", "#servers-list li", "div.watch-servers li", ".tab-content .server-item", "ul li[data-server]"
+        ]:
+            found = soup.select(sel)
+            if found:
+                servers = found
+                break
+        
+        server_names = [s.text.strip().lower() for s in servers]
+        
+        # Extract player registry keys
+        zx_match = re.search(r'var _zX="([^"]+)"', html)
+        zk_match = re.search(r'var _zK="([^"]+)"', html)
+        
+        if not zx_match or not zk_match:
+            logger.warning("Failed to locate player registries (_zX / _zK) on watch page")
             return {}
+            
+        resources = json.loads(safe_b64decode(zx_match.group(1)).decode("utf-8"))
+        configs = json.loads(safe_b64decode(zk_match.group(1)).decode("utf-8"))
+        
+        resolved_links = {}
+        hls_indices = []
+        other_indices = []
+        direct_indices = []
+        
+        for idx, (res, conf) in enumerate(zip(resources, configs)):
+            s_name = server_names[idx] if idx < len(server_names) else ""
+            if any(x in s_name for x in ["streamwish", "yona", "yonaplay", "videa", "hglink", "soraplay", "sorastream", "hanerix"]):
+                hls_indices.append(idx)
+            elif "mp4upload" in s_name or "yourupload" in s_name:
+                direct_indices.append(idx)
+            else:
+                other_indices.append(idx)
+                
+        for idx in hls_indices + other_indices + direct_indices:
+            res = resources[idx]
+            conf = configs[idx]
+            s_name = server_names[idx] if idx < len(server_names) else ""
+            embed_url = decrypt_resource(res, conf)
+            if embed_url:
+                m3u8_master = await get_m3u8_from_embed(embed_url, session, referer=play_url)
+                if m3u8_master:
+                    if m3u8_master.startswith("{"):
+                        try:
+                            qualities = json.loads(m3u8_master)
+                            resolved_links.update(qualities)
+                        except Exception:
+                            pass
+                    elif ".m3u8" in m3u8_master:
+                        qualities = await parse_m3u8_qualities(m3u8_master, session)
+                        resolved_links.update(qualities)
+                    else:
+                        q_name = normalize_quality_name(s_name) if s_name else "480p"
+                        if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                            q_name = "480p"
+                        resolved_links[q_name] = m3u8_master
+                        
+        if not resolved_links:
+            logger.info("HLS/Embed parsing yielded 0 links. Scraping fallback download table buttons on watch page...")
+            download_btns = soup.select(".download-links a, table.download-table a, a.download-link, .download-item a, .download-list a, .dlinks a, .quality-download a, .quality-box a")
+            if not download_btns:
+                download_btns = soup.find_all("a", href=lambda h: h and any(x in str(h).lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru"]))
+            if not download_btns:
+                download_btns = soup.find_all("a", href=True)
+                
+            for a in download_btns:
+                href = a.get("href")
+                if href and href.startswith("http"):
+                    label = (a.text.strip() + " " + str(a.get("class", "")) + " " + href).lower()
+                    if not any(x in href.lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "4shared", "gofile", "videa", "ok.ru", "mail.ru", "streamwish"]):
+                        continue
+                        
+                    q_name = normalize_quality_name(label)
+                    if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                        if "1080" in label or "fhd" in label or "جودة خارقة" in label:
+                            q_name = "1080p"
+                        elif "720" in label or "hd" in label or "جودة عالية" in label:
+                            q_name = "720p"
+                        elif "360" in label or "sd" in label or "جودة كافية" in label:
+                            q_name = "360p"
+                        else:
+                            q_name = "480p"
+
+                    final_url = href
+                    if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
+                        try:
+                            logger.info(f"Following shortlink redirect for fallback download link: {href}")
+                            headers = get_browser_headers(href)
+                            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                                resp = await session.get(href, headers=headers, timeout=8)
+                                if resp.url:
+                                    final_url = str(resp.url)
+                            else:
+                                async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
+                                    final_url = str(resp.url)
+                            logger.info(f"Resolved shortlink final destination: {final_url}")
+                        except Exception as ex:
+                            logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+
+                    if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
+                        resolved_links[q_name] = final_url
+                        
+        if not resolved_links:
+            logger.warning("Failed to parse working HLS streams or direct video files from embed servers or download table")
+            return {}
+            
+        logger.info(f"Resolved {len(resolved_links)} download link qualities: {list(resolved_links.keys())}")
+        return resolved_links
+    except Exception:
+        logger.exception("Error in process while scraping download links")
+        return {}
+
+async def resolve_anime_slug_scraper(
+    title_romaji: Optional[str], 
+    title_english: Optional[str], 
+    synonyms: Optional[List[str]] = None
+) -> Optional[str]:
+    """
+    Centralized, highly-resilient function to find the matching WitAnime slug for an anime
+    using multiple title variations, fallback synonyms, and partial title split searches.
+    """
+    from app.utils.match import sanitize_search_query, get_best_slug_match
+    
+    # List of queries to try, in priority order
+    queries_to_try = []
+    
+    # 1. Main Romaji Title
+    if title_romaji:
+        cleaned_rom = sanitize_search_query(title_romaji)
+        if cleaned_rom and len(cleaned_rom) > 2:
+            queries_to_try.append((cleaned_rom, title_romaji))
+            
+    # 2. Main English Title
+    if title_english:
+        cleaned_eng = sanitize_search_query(title_english)
+        if cleaned_eng and len(cleaned_eng) > 2 and cleaned_eng not in [q[0] for q in queries_to_try]:
+            queries_to_try.append((cleaned_eng, title_english))
+            
+    # 3. Synonyms
+    if synonyms:
+        for syn in synonyms:
+            cleaned_syn = sanitize_search_query(syn)
+            if cleaned_syn and len(cleaned_syn) > 2 and cleaned_syn not in [q[0] for q in queries_to_try]:
+                queries_to_try.append((cleaned_syn, syn))
+                
+    # 4. Partial split titles fallback (for colons, dashes, slashes)
+    split_queries = []
+    # Collect titles to split
+    titles_to_split = []
+    if title_romaji:
+        titles_to_split.append(title_romaji)
+    if title_english:
+        titles_to_split.append(title_english)
+    if synonyms:
+        titles_to_split.extend(synonyms)
+        
+    for title in titles_to_split:
+        for delimiter in [":", " - ", "/"]:
+            if delimiter in title:
+                for part in title.split(delimiter):
+                    cleaned_part = sanitize_search_query(part)
+                    if cleaned_part and len(cleaned_part) > 2:
+                        if cleaned_part not in [q[0] for q in queries_to_try] and cleaned_part not in [s[0] for s in split_queries]:
+                            split_queries.append((cleaned_part, part))
+                            
+    # Try the main queries first
+    for cleaned_query, orig_query in queries_to_try:
+        logger.info(f"Searching WitAnime for: {cleaned_query} (original: {orig_query})")
+        results = await search_anime_scraper(cleaned_query)
+        if results:
+            slug = get_best_slug_match(results, cleaned_query)
+            if slug:
+                logger.info(f"Successfully resolved slug '{slug}' for query: {cleaned_query}")
+                return slug
+                
+    # If all primary queries fail, try split part queries
+    for cleaned_query, orig_query in split_queries:
+        logger.info(f"Searching WitAnime for split fallback: {cleaned_query} (original: {orig_query})")
+        results = await search_anime_scraper(cleaned_query)
+        if results:
+            slug = get_best_slug_match(results, cleaned_query)
+            if slug:
+                logger.info(f"Successfully resolved slug '{slug}' for split fallback: {cleaned_query}")
+                return slug
+                
+    logger.warning(f"Could not resolve any WitAnime slug for romaji='{title_romaji}', english='{title_english}'")
+    return None
