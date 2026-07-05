@@ -535,6 +535,69 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
 
 async def get_m3u8_from_embed(embed_url: str, session: aiohttp.ClientSession, referer: Optional[str] = None) -> Optional[str]:
     """Resolves and extracts .m3u8 master playlist or direct video file using custom player unpacker."""
+    # mp4upload embed: parse video.src or Dean Edwards packed JS
+    if "mp4upload.com" in embed_url or "mp4upload" in embed_url:
+        try:
+            logger.info(f"Resolving mp4upload embed: {embed_url}")
+            headers = get_browser_headers(embed_url)
+            html = ""
+            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                resp = await session.get(embed_url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    html = resp.text
+            else:
+                async with session.get(embed_url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as resp:
+                    if resp.status == 200:
+                        html = await resp.text()
+
+            if html:
+                # 1. Unpack Dean Edwards JS if present
+                script_match = re.search(r"eval\(function\(p,a,c,k,e,d\).*?\.split\(['\"]\|['\"]\)\)\)", html, re.DOTALL)
+                if script_match:
+                    unpacked = unpack_dean_edwards(script_match.group(0))
+                    mp4_matches = re.findall(r'https?://[^\s"\']+\.mp4[^\s"\']*', unpacked)
+                    if mp4_matches:
+                        logger.info(f"Resolved mp4upload direct video from unpacked JS: {mp4_matches[0]}")
+                        return mp4_matches[0]
+                
+                # 2. Search player.src({type: "video/mp4", src: "..."})
+                src_match = re.search(r'player\.src\(\s*\{\s*type\s*:\s*["\']video/mp4["\']\s*,\s*src\s*:\s*["\'](https?://[^"\']+)["\']', html)
+                if not src_match:
+                    src_match = re.search(r'src\s*:\s*["\'](https?://[^"\']+\.mp4[^"\']*)["\']', html)
+                if src_match:
+                    logger.info(f"Resolved mp4upload direct video: {src_match.group(1)}")
+                    return src_match.group(1)
+        except Exception as e:
+            logger.warning(f"Failed to resolve mp4upload embed: {e}")
+
+    # my.mail.ru embed: parse videoSrc / metadata
+    if "mail.ru" in embed_url or "my.mail.ru" in embed_url:
+        try:
+            logger.info(f"Resolving my.mail.ru embed: {embed_url}")
+            headers = get_browser_headers(embed_url)
+            html = ""
+            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                resp = await session.get(embed_url, headers=headers, timeout=10)
+                if resp.status_code == 200:
+                    text_data = resp.text
+            else:
+                async with session.get(embed_url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as resp:
+                    if resp.status == 200:
+                        text_data = await resp.text()
+
+            if text_data:
+                v_match = re.search(r'"videoSrc"\s*:\s*"([^"]+)"', text_data)
+                if not v_match:
+                    v_match = re.search(r'https?://[^"\']+\.mp4[^"\']*', text_data)
+                if v_match:
+                    url_res = v_match.group(1) if hasattr(v_match, 'group') and v_match.groups() else v_match.group(0)
+                    if not url_res.startswith("http"):
+                        url_res = f"https:{url_res}"
+                    logger.info(f"Resolved my.mail.ru direct video: {url_res}")
+                    return url_res
+        except Exception as e:
+            logger.warning(f"Failed to resolve my.mail.ru embed: {e}")
+
     # videa.hu embed: support XML decryption and direct static mp4/HLS links
     if "videa.hu" in embed_url or "videa" in embed_url:
         try:

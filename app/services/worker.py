@@ -277,6 +277,9 @@ async def execute_queued_task(
     logger.info(f"Executing task {task_id}: {anime_title} ep {episode_num} [{requested_quality}]")
     
     # 0. Check TelegramFileCache for instant Zero-second delivery across server crashes/restarts
+    cached_file_id = None
+    cached_quality = None
+    cached_file_size = None
     try:
         from app.database.models import TelegramFileCache
         async with db_session_factory() as session:
@@ -288,9 +291,13 @@ async def execute_queued_task(
                 stmt_tf = stmt_tf.where(TelegramFileCache.quality == requested_quality)
             res_tf = await session.execute(stmt_tf)
             tf_entry = res_tf.scalars().first()
+            if tf_entry:
+                cached_file_id = tf_entry.file_id
+                cached_quality = tf_entry.quality
+                cached_file_size = tf_entry.file_size
             
-        if tf_entry and tf_entry.file_id:
-            logger.info(f"Zero-second Delivery (DB File ID hit): {tf_entry.file_id[:15]}... for {anime_title} Ep {episode_num} [{tf_entry.quality}]")
+        if cached_file_id:
+            logger.info(f"Zero-second Delivery (DB File ID hit): {cached_file_id[:15]}... for {anime_title} Ep {episode_num} [{cached_quality}]")
             if status_msg_id:
                 try: await bot.delete_message(chat_id=chat_id, message_id=status_msg_id)
                 except Exception: pass
@@ -300,7 +307,7 @@ async def execute_queued_task(
             async with db_session_factory() as session:
                 stmt_all = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)
                 res_all = await session.execute(stmt_all)
-                all_eps = res_all.scalars().all()
+                all_eps = list(res_all.scalars().all())
                 def parse_ep(e):
                     try: return float(e.ep_number)
                     except ValueError: return 999999.0
@@ -323,12 +330,11 @@ async def execute_queued_task(
             chan = config.CHANNEL_USERNAME if config.CHANNEL_USERNAME else (f"@{bot_info.username}" if bot_info else "")
             if chan and not chan.startswith("@"): chan = "@" + chan
             
-            file_size_val = getattr(tf_entry, "file_size", None)
-            size_caption = f"{file_size_val:.1f} MB" if file_size_val and file_size_val > 0 else "سريع ⚡"
+            size_caption = f"{cached_file_size:.1f} MB" if cached_file_size and cached_file_size > 0 else "سريع ⚡"
             caption = (
                 f"🎬 **{anime_title}**\n"
                 f"🔢 **الحلقة:** {episode_num}\n"
-                f"⚙️ **الجودة:** {tf_entry.quality}\n"
+                f"⚙️ **الجودة:** {cached_quality}\n"
                 f"💾 **الحجم:** {size_caption}\n\n"
                 f"🎥 **مشاهدة ممتعة!** ✨🍿\n"
                 f"📢 **القناة:** {chan}"
@@ -338,17 +344,17 @@ async def execute_queued_task(
             try:
                 await bot.send_video(
                     chat_id=chat_id,
-                    video=tf_entry.file_id,
+                    video=cached_file_id,
                     thumbnail=thumb_input,
                     caption=caption,
                     supports_streaming=True,
                     reply_markup=nav_markup,
                     parse_mode="Markdown"
                 )
-                await mirror_video_to_library(bot, db_session_factory, anilist_id, anime_title, episode_num, tf_entry.quality, tf_entry.file_id)
+                await mirror_video_to_library(bot, db_session_factory, anilist_id, anime_title, episode_num, cached_quality, cached_file_id)
                 return True
             except Exception as cached_deliv_err:
-                logger.warning(f"Failed instant delivery of file_id {tf_entry.file_id}: {cached_deliv_err}. Falling back to full scraper pipeline.")
+                logger.warning(f"Failed instant delivery of file_id {cached_file_id}: {cached_deliv_err}. Falling back to full scraper pipeline.")
     except Exception:
         logger.exception("Error checking TelegramFileCache")
 
