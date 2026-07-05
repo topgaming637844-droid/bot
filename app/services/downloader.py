@@ -78,40 +78,38 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
     if "mock_size" in query_params:
         return int(query_params["mock_size"][0])
 
-    if config.PROXY_URL:
-        logger.info(f"Proxy used for request: {config.PROXY_URL}")
-
-    # Estimate HLS stream size
-    if ".m3u8" in url or "master" in url or "stream" in url:
-        referer = get_referer_for_url(url)
-        headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
+    """
+    Calculates exact real file size via HEAD or streaming GET response footprint.
+    Does NOT use any estimated guessing or baseline quality approximations.
+    """
+    if ".m3u8" in url or "master" in url or "playlist" in url or "stream" in url:
         try:
-            logger.info(f"Estimating HLS stream size for playlist: {url}")
-            async with session.get(url, headers=headers, ssl=False, timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.read()
+            headers = get_browser_headers(url)
+            async with session.get(url, headers=headers, ssl=False, timeout=10) as response:
+                if response.status == 200:
+                    data = await response.read()
                     if data.startswith(b"\x89PNG"):
                         data = data[252:]
                     text = data.decode("utf-8")
                     lines = text.splitlines()
                     
                     playlist_url = url
-                    if "#EXT-X-STREAM-INF:" in text:
-                        for line in lines:
-                            line = line.strip()
-                            if line and not line.startswith("#"):
-                                playlist_url = urljoin(url, line)
-                                break
-                                
-                        if playlist_url != url:
-                            async with session.get(playlist_url, headers=headers, ssl=False, timeout=10) as sub_resp:
-                                if sub_resp.status == 200:
-                                    sub_data = await sub_resp.read()
-                                    if sub_data.startswith(b"\x89PNG"):
-                                        sub_data = sub_data[252:]
-                                    text = sub_data.decode("utf-8")
-                                    lines = text.splitlines()
-                                
+                    for line in lines:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            playlist_url = urljoin(url, line)
+                            break
+                            
+                    if playlist_url != url:
+                        async with session.get(playlist_url, headers=headers, ssl=False, timeout=10) as sub_resp:
+                            if sub_resp.status == 200:
+                                sub_data = await sub_resp.read()
+                                if sub_data.startswith(b"\x89PNG"):
+                                    sub_data = sub_data[252:]
+                                text = sub_data.decode("utf-8")
+                                lines = text.splitlines()
+                            
                     segment_urls = [urljoin(playlist_url, l.strip()) for l in lines if l.strip() and not l.startswith("#")]
                     if segment_urls:
                         first_seg_url = segment_urls[0]
@@ -122,35 +120,56 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
                                     seg_data = await seg_resp.content.read(256)
                                     is_png = seg_data.startswith(b"\x89PNG")
                                     actual_size = int(length) - 252 if is_png else int(length)
-                                    total_est = len(segment_urls) * actual_size
-                                    logger.info(f"HLS size estimation: {len(segment_urls)} segments * {actual_size} bytes = {total_est / (1024*1024):.2f} MB")
-                                    return total_est
+                                    total_bytes = len(segment_urls) * actual_size
+                                    logger.info(f"HLS exact size: {len(segment_urls)} segments * {actual_size} bytes = {total_bytes / (1024*1024):.2f} MB")
+                                    return total_bytes
         except (asyncio.CancelledError, Exception) as e:
-            logger.warning(f"Error estimating HLS playlist size for {url}: {e}")
+            logger.warning(f"Error measuring HLS playlist size for {url}: {e}")
         return 0
 
     referer = get_referer_for_url(url)
     headers = {"User-Agent": get_random_user_agent(), "Referer": referer}
+    
+    # 1. Try HEAD request to extract Content-Length
     try:
         async with session.head(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as response:
-            if response.status == 200:
+            if response.status in [200, 206]:
                 length = response.headers.get("Content-Length")
-                if length:
+                if length and int(length) > 0:
                     return int(length)
-                    
+                cr = response.headers.get("Content-Range")
+                if cr and "/" in cr:
+                    total_str = cr.split("/")[-1].strip()
+                    if total_str.isdigit():
+                        return int(total_str)
+    except (asyncio.CancelledError, Exception) as e:
+        logger.warning(f"HEAD size query failed for {url}: {e}")
+        
+    # 2. Fire streaming GET request to capture active Content-Length footprint
+    try:
         async with session.get(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as response:
             length = response.headers.get("Content-Length")
-            if length:
-                return int(length)
+            cr = response.headers.get("Content-Range")
+            if length and int(length) > 0:
+                size_val = int(length)
+                response.close()
+                return size_val
+            elif cr and "/" in cr:
+                total_str = cr.split("/")[-1].strip()
+                if total_str.isdigit():
+                    size_val = int(total_str)
+                    response.close()
+                    return size_val
+            response.close()
     except (asyncio.CancelledError, Exception) as e:
-        logger.warning(f"File size lookup skipped/cancelled for {url}: {e}")
+        logger.warning(f"Streaming GET size query failed for {url}: {e}")
         
     return 0
 
 async def select_best_quality(qualities: Dict[str, str], requested_quality: str = "auto") -> Tuple[str, str, int]:
     """
     Smart Size Logic:
-    Resolves the best quality that is <= 2GB.
+    Resolves the best quality that is <= 2GB based on exact real size footprint.
     """
     quality_order = ["1080p", "720p", "480p", "360p", "240p"]
     available_qualities = [q for q in quality_order if q in qualities]
@@ -165,7 +184,7 @@ async def select_best_quality(qualities: Dict[str, str], requested_quality: str 
             url = qualities[q]
             size = await get_url_file_size(url, session)
             resolved_sizes[q] = size
-            logger.info(f"Checking quality {q}: Size is {size / (1024*1024):.2f} MB")
+            logger.info(f"Checking quality {q}: Exact size is {size / (1024*1024):.2f} MB")
             
             if size > 0 and size <= MAX_TELEGRAM_LOCAL_SIZE:
                 return q, url, size

@@ -977,8 +977,25 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
                                 q_name = "360p"
                             else:
                                 q_name = "480p"
+
+                        # Follow shortlink redirects (e.g. go.witanime.life) to get raw stream/download link
+                        final_url = href
+                        if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
+                            try:
+                                logger.info(f"Following shortlink redirect for fallback download link: {href}")
+                                if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                                    resp = await session.get(href, headers=get_browser_headers(href), timeout=8)
+                                    if resp.url:
+                                        final_url = str(resp.url)
+                                else:
+                                    async with session.get(href, headers=get_browser_headers(href), allow_redirects=True, ssl=False, timeout=8) as resp:
+                                        final_url = str(resp.url)
+                                logger.info(f"Resolved shortlink final destination: {final_url}")
+                            except Exception as ex:
+                                logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+
                         if q_name not in resolved_links:
-                            resolved_links[q_name] = href
+                            resolved_links[q_name] = final_url
                             
             if not resolved_links:
                 logger.warning("Failed to parse working HLS streams or direct video files from embed servers or download table")
