@@ -8,6 +8,13 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import quote, urljoin
 
 WITANIME_DOMAIN = "witanime.life"
+GOGOANIME_DOMAINS = [
+    "gogoanime3.co",
+    "gogoanime.gg",
+    "gogoanime.life",
+    "gogoanime.ma",
+    "gogoanime.tel"
+]
 from config import config
 from app.utils.user_agents import get_random_user_agent
 from app.services.anilist import get_connector
@@ -462,6 +469,138 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
             break
 
     return results
+
+async def search_anime_gogoanime(title: str) -> List[Dict[str, Any]]:
+    """Searches Gogoanime for an anime title and returns a list of results."""
+    logger.info(f"Searching Gogoanime for: {title}")
+    headers = {"User-Agent": get_random_user_agent()}
+    for domain in GOGOANIME_DOMAINS:
+        search_url = f"https://{domain}/search.html?keyword={quote(title)}"
+        try:
+            connector = get_connector()
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(search_url, headers=headers, timeout=10) as resp:
+                    if resp.status != 200:
+                        continue
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    items = soup.select("ul.items li a")
+                    results = []
+                    for a in items[:10]:
+                        href = a.get("href")
+                        if href and "/category/" in href:
+                            slug = href.split("/category/")[-1].strip("/")
+                            title_text = a.get("title") or a.text.strip()
+                            results.append({"title": title_text, "slug": slug})
+                    if results:
+                        logger.info(f"Gogoanime ({domain}) returned {len(results)} results")
+                        return results
+        except Exception as e:
+            logger.warning(f"Gogoanime search failed on {domain}: {e}")
+    return []
+
+async def get_episodes_gogoanime(anime_slug: str) -> Dict[str, Any]:
+    """Retrieves episode list for a Gogoanime series slug."""
+    logger.info(f"Fetching Gogoanime episodes for slug: {anime_slug}")
+    headers = {"User-Agent": get_random_user_agent()}
+    for domain in GOGOANIME_DOMAINS:
+        url = f"https://{domain}/category/{anime_slug}"
+        try:
+            connector = get_connector()
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, headers=headers, timeout=10) as resp:
+                    if resp.status != 200:
+                        continue
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    ep_list = soup.select("#episode_page li a")
+                    if not ep_list:
+                        ep_list = soup.select(".episodes-list a")
+                    episodes = []
+                    for a in ep_list:
+                        ep_num = a.text.strip()
+                        href = a.get("href")
+                        if href and "/" in href:
+                            ep_id = href.split("/")[-1].strip()
+                            if ep_id:
+                                episodes.append({
+                                    "ep_number": ep_num,
+                                    "play_url": f"https://{domain}/watch/{ep_id}"
+                                })
+                    if episodes:
+                        episodes.reverse()
+                        try:
+                            episodes.sort(key=lambda x: float(x["ep_number"]) if x["ep_number"].replace(".", "").isdigit() else 999999)
+                        except Exception:
+                            pass
+                        logger.info(f"Gogoanime ({domain}) found {len(episodes)} episodes")
+                        return {"episodes": episodes}
+        except Exception as e:
+            logger.warning(f"Gogoanime episodes failed on {domain}: {e}")
+    return {"episodes": []}
+
+async def get_download_links_gogoanime(play_url: str) -> Dict[str, str]:
+    """Extracts download/stream links from a Gogoanime watch page."""
+    logger.info(f"Getting Gogoanime download links for: {play_url}")
+    headers = {"User-Agent": get_random_user_agent()}
+    try:
+        connector = get_connector()
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(play_url, headers=headers, timeout=10) as resp:
+                if resp.status != 200:
+                    return {}
+                html = await resp.text()
+                soup = BeautifulSoup(html, "html.parser")
+                iframe = soup.select_one("iframe")
+                if iframe and iframe.get("src"):
+                    embed_url = iframe["src"]
+                    if embed_url.startswith("//"):
+                        embed_url = "https:" + embed_url
+                    async with session.get(embed_url, headers=headers, timeout=10) as embed_resp:
+                        if embed_resp.status == 200:
+                            embed_html = await embed_resp.text()
+                            video_src = re.search(r'src=["\']([^"\']+\.mp4[^"\']*)["\']', embed_html)
+                            if video_src:
+                                return {"720p": video_src.group(1)}
+                            hls_src = re.search(r'src=["\']([^"\']+\.m3u8[^"\']*)["\']', embed_html)
+                            if hls_src:
+                                return {"720p": hls_src.group(1)}
+                video_src = re.search(r'<source\s+src=["\']([^"\']+\.mp4[^"\']*)["\']', html)
+                if video_src:
+                    return {"720p": video_src.group(1)}
+                return {}
+    except Exception as e:
+        logger.exception(f"Error getting Gogoanime download links: {e}")
+        return {}
+
+async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
+    """Retrieves the list of episodes for a series slug using WitAnime or Gogoanime scraper."""
+    logger.info(f"جاري جلب قائمة الحلقات للأنمي: {anime_slug}")
+    if config.MOCK_MODE:
+        logger.info("[MOCK MODE] Generating mock episodes list.")
+        return {
+            "episodes": [{"ep_number": str(i), "play_url": f"https://mock-play-page.com/{anime_slug}-episode-{i}"} for i in range(1, 13)],
+            "poster_url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_10MB.mp4",
+            "description": "قصة أنمي تجريبية لوضع المحاكاة.",
+            "duration": "24 دقيقة"
+        }
+
+    # If it is a Gogoanime slug
+    if any(domain in anime_slug for domain in GOGOANIME_DOMAINS) or not ("witanime" in anime_slug or anime_slug.startswith("witanime")):
+        gogo_res = await get_episodes_gogoanime(anime_slug)
+        if gogo_res and gogo_res.get("episodes"):
+            return gogo_res
+
+    # WitAnime
+    if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+        logger.info("Using curl_cffi for get_episodes_scraper")
+        proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+        async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+            return await _run_get_episodes(session, anime_slug)
+    else:
+        connector = get_connector()
+        async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+            return await _run_get_episodes(session, anime_slug)
 
 async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
     logger.info(f"Scraping download links from watch page: {play_url}")

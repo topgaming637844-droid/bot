@@ -171,7 +171,7 @@ async def _process_single_task_wrapper(
             res = await session.execute(stmt)
             db_task = res.scalar_one_or_none()
             if db_task:
-                db_task.status = "failed"
+                db_task.status = "completed" if success else "failed"
                 db_task.updated_at = datetime.now(timezone.utc)
                 await session.commit()
 
@@ -389,14 +389,15 @@ async def execute_queued_task(
         chans_list = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in (config.CHANNEL_USERNAME or "").replace(",", " ").split() if c.strip()]
         chan = " | ".join(chans_list) if chans_list else (f"@{bot_info.username}" if bot_info else "")
         
+        import html
         size_caption = f"{cached_file_size:.1f} MB" if cached_file_size and cached_file_size > 0 else "سريع ⚡"
         caption = (
-            f"🎬 **{anime_title}**\n"
-            f"🔢 **الحلقة:** {episode_num}\n"
-            f"⚙️ **الجودة:** {cached_quality}\n"
-            f"💾 **الحجم:** {size_caption}\n\n"
-            f"🎥 **مشاهدة ممتعة!** ✨🍿\n"
-            f"📢 **القناة:** {chan}"
+            f"🎬 <b>{html.escape(anime_title)}</b>\n"
+            f"🔢 <b>الحلقة:</b> {episode_num}\n"
+            f"⚙️ <b>الجودة:</b> {cached_quality}\n"
+            f"💾 <b>الحجم:</b> {size_caption}\n\n"
+            f"🎥 <b>مشاهدة ممتعة!</b> ✨🍿\n"
+            f"📢 <b>القناة:</b> {chan}"
         )
         thumb_input = await get_video_thumbnail(bot, db_session_factory, anilist_id)
         
@@ -408,7 +409,7 @@ async def execute_queued_task(
                 caption=caption,
                 supports_streaming=True,
                 reply_markup=nav_markup,
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
             await mirror_video_to_library(bot, db_session_factory, anilist_id, anime_title, episode_num, cached_quality, cached_file_id)
             return True
@@ -519,13 +520,14 @@ async def execute_queued_task(
     chans_list = [c.strip() if c.strip().startswith("@") else f"@{c.strip()}" for c in (config.CHANNEL_USERNAME or "").replace(",", " ").split() if c.strip()]
     chan = " | ".join(chans_list) if chans_list else (f"@{bot_info.username}" if bot_info else "")
         
+    import html
     caption = (
-        f"🎬 **{anime_title}**\n"
-        f"🔢 **الحلقة:** {episode_num}\n"
-        f"⚙️ **الجودة:** {selected_quality}\n"
-        f"💾 **الحجم:** {size_mb:.1f} MB\n\n"
-        f"🎥 **مشاهدة ممتعة!** ✨🍿\n"
-        f"📢 **القناة:** {chan}"
+        f"🎬 <b>{html.escape(anime_title)}</b>\n"
+        f"🔢 <b>الحلقة:</b> {episode_num}\n"
+        f"⚙️ <b>الجودة:</b> {selected_quality}\n"
+        f"💾 <b>الحجم:</b> {size_mb:.1f} MB\n\n"
+        f"🎥 <b>مشاهدة ممتعة!</b> ✨🍿\n"
+        f"📢 <b>القناة:</b> {chan}"
     )
 
     # If it is a Telegram file ID
@@ -545,7 +547,7 @@ async def execute_queued_task(
             caption=caption,
             supports_streaming=True,
             reply_markup=nav_markup,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         await save_telegram_file_cache(db_session_factory, anilist_id, episode_num, selected_quality, download_url)
         return True
@@ -664,23 +666,18 @@ async def execute_queued_task(
             try: await bot.edit_message_text("📤 جاري رفع الفيديو إلى تلغرام...", chat_id=chat_id, message_id=status_msg_id)
             except Exception: pass
 
-        with open(temp_file_path, "rb") as vf:
-            video_bytes = vf.read()
-        video_file = BufferedInputFile(video_bytes, filename=filename)
+        video_file = FSInputFile(str(temp_file_path))
         thumb_input = await get_video_thumbnail(bot, db_session_factory, anilist_id)
-
-        # حماية النص من الرموز التي تسبب كراش لتليجرام في المارك داون
-        safe_caption = caption.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
 
         sent_msg = await bot.send_video(
             chat_id=chat_id,
             video=video_file,
             thumbnail=thumb_input,
             duration=parse_duration_to_seconds(duration_str),
-            caption=safe_caption,
+            caption=caption,
             supports_streaming=True,
             reply_markup=nav_markup,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         uploaded_file_id = sent_msg.video.file_id
 
