@@ -66,8 +66,8 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
                 await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
                 
                 if not scraper_results:
-                    logger.info(f"WitAnime لم ترجع نتائج للبحث: '{query}'")
-                    await message.answer("❌ لم يتم العثور على أنمي مطابق في خوادم البث المساعدة. يرجى التحقق من الاسم المكتوب.")
+                    logger.info(f"لم ترجع نتائج للبحث: '{query}'")
+                    await message.answer("⚠️ عذراً، خادم البث يواجه ضغطاً حالياً، يرجى المحاولة لاحقاً.")
                     return
                 
                 for r in scraper_results:

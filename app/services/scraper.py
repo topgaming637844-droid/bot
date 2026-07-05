@@ -133,21 +133,33 @@ WITANIME_DOMAINS = ["witanime.life", "witanime.pics", "witanime.com", "witanime.
 
 def get_browser_headers(referer: str = f"https://{WITANIME_DOMAIN}/") -> dict:
     return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
         "Referer": referer,
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua": '"Chromium";v="123", "Not:A-Brand";v="8", "Google Chrome";v="123"',
         "Sec-Ch-Ua-Mobile": "?0",
         "Sec-Ch-Ua-Platform": '"Windows"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-Site": "same-origin" if "witanime" in referer else "cross-site",
+        "Sec-Fetch-User": "?1",
         "Upgrade-Insecure-Requests": "1"
     }
 
+async def harvest_session_cookies(domain: str, session: aiohttp.ClientSession):
+    """Harvests initial session cookies from base domain before sending queries."""
+    base_url = f"https://{domain}/"
+    try:
+        headers = get_browser_headers(base_url)
+        async with session.get(base_url, headers=headers, ssl=False, timeout=6) as resp:
+            if resp.status == 200:
+                logger.info(f"Successfully harvested session cookies from {domain}")
+    except Exception as e:
+        logger.warning(f"Failed harvesting cookies from {domain}: {e}")
+
 async def get_html(url: str, session: aiohttp.ClientSession) -> str:
-    """Fetches HTML content with custom headers and optional proxy."""
+    """Fetches HTML content with browser headers and cookie session."""
     headers = get_browser_headers(url)
     proxy_str = f" via proxy {config.PROXY_URL}" if config.PROXY_URL else ""
     logger.info(f"Scraping page: {url}{proxy_str}")
@@ -239,6 +251,7 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
     connector = get_connector()
     async with aiohttp.ClientSession(connector=connector) as session:
         for domain in WITANIME_DOMAINS:
+            await harvest_session_cookies(domain, session)
             for q_path in search_queries:
                 search_url = f"https://{domain}/{q_path.lstrip('/')}"
                 try:
