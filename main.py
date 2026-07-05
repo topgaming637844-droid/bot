@@ -149,7 +149,7 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI App
 app = FastAPI(lifespan=lifespan)
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from app.database.models import SearchCache, EpisodeCache, DownloadCache
@@ -249,83 +249,91 @@ async def webapp_qualities(db_cache_id: int, anilist_id: int, ep_number: str):
 
 @app.post("/api/webapp/select_episode")
 async def api_select_episode(payload: WebAppEpisodePayload):
-    logger.info(f"WebApp api_select_episode payload: {payload}")
-    
-    async with AsyncSessionLocal() as db_session:
-        stmt = select(EpisodeCache).where(
-            (EpisodeCache.anilist_id == payload.anilist_id) & (EpisodeCache.ep_number == payload.ep_number)
-        )
-        res = await db_session.execute(stmt)
-        ep_entry = res.scalar_one_or_none()
+    try:
+        logger.info(f"WebApp api_select_episode payload: {payload}")
         
-        if not ep_entry:
-            return {"status": "error", "message": "Episode not found"}
+        async with AsyncSessionLocal() as db_session:
+            stmt = select(EpisodeCache).where(
+                (EpisodeCache.anilist_id == payload.anilist_id) & (EpisodeCache.ep_number == payload.ep_number)
+            )
+            res = await db_session.execute(stmt)
+            ep_entry = res.scalar_one_or_none()
             
-        stmt_s = select(SearchCache).where(SearchCache.anilist_id == payload.anilist_id)
-        res_s = await db_session.execute(stmt_s)
-        cache_entry = res_s.scalars().first()
-        title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
-        if title.startswith("WITANIME:"):
-            title = cache_entry.title_english
+            if not ep_entry:
+                return {"status": "error", "message": "Episode not found"}
+                
+            stmt_s = select(SearchCache).where(SearchCache.anilist_id == payload.anilist_id)
+            res_s = await db_session.execute(stmt_s)
+            cache_entry = res_s.scalars().first()
+            title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
+            if title.startswith("WITANIME:"):
+                title = cache_entry.title_english
+                
+            duration = cache_entry.duration if cache_entry else None
             
-        duration = cache_entry.duration if cache_entry else None
-        
-        # Trigger quality prompt in Telegram chat
-        from app.handlers.download import prompt_quality_selection
-        await prompt_quality_selection(
-            bot=bot,
-            chat_id=payload.user_id,
-            anilist_id=payload.anilist_id,
-            ep_number=payload.ep_number,
-            play_url=ep_entry.play_url,
-            anime_title=title,
-            duration=duration,
-            db_session=db_session
-        )
-        
-    return {"status": "ok"}
+            # Trigger quality prompt in Telegram chat
+            from app.handlers.download import prompt_quality_selection
+            await prompt_quality_selection(
+                bot=bot,
+                chat_id=payload.user_id,
+                anilist_id=payload.anilist_id,
+                ep_number=payload.ep_number,
+                play_url=ep_entry.play_url,
+                anime_title=title,
+                duration=duration,
+                db_session=db_session
+            )
+            
+        return {"status": "ok"}
+    except Exception as e:
+        logger.exception("Webapp Select Episode Exception caught:")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/api/webapp/select_quality")
 async def api_select_quality(payload: WebAppQualityPayload):
-    logger.info(f"WebApp api_select_quality payload: {payload}")
-    
-    async with AsyncSessionLocal() as db_session:
-        stmt_s = select(SearchCache).where(SearchCache.anilist_id == payload.anilist_id)
-        res_s = await db_session.execute(stmt_s)
-        cache_entry = res_s.scalars().first()
-        title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
-        if title.startswith("WITANIME:"):
-            title = cache_entry.title_english
+    try:
+        logger.info(f"WebApp api_select_quality payload: {payload}")
+        
+        async with AsyncSessionLocal() as db_session:
+            stmt_s = select(SearchCache).where(SearchCache.anilist_id == payload.anilist_id)
+            res_s = await db_session.execute(stmt_s)
+            cache_entry = res_s.scalars().first()
+            title = cache_entry.title_english or cache_entry.title_romaji if cache_entry else "أنمي"
+            if title.startswith("WITANIME:"):
+                title = cache_entry.title_english
+                
+            # Create enqueued status message
+            status_msg = await bot.send_message(
+                chat_id=payload.user_id,
+                text=(
+                    f"⏳ **تم إضافة طلبك لقائمة الانتظار:**\n"
+                    f"🎬 الأنمي: {title}\n"
+                    f"🔢 الحلقة: {payload.ep_number}\n"
+                    f"⚙️ الجودة: {payload.quality}\n\n"
+                    f"🔄 جاري بدء المعالجة والتحميل، يرجى الانتظار..."
+                ),
+                parse_mode="Markdown"
+            )
             
-        # Create enqueued status message
-        status_msg = await bot.send_message(
-            chat_id=payload.user_id,
-            text=(
-                f"⏳ **تم إضافة طلبك لقائمة الانتظار:**\n"
-                f"🎬 الأنمي: {title}\n"
-                f"🔢 الحلقة: {payload.ep_number}\n"
-                f"⚙️ الجودة: {payload.quality}\n\n"
-                f"🔄 جاري بدء المعالجة والتحميل، يرجى الانتظار..."
-            ),
-            parse_mode="Markdown"
-        )
-        
-        from app.database.models import PersistentTaskQueue
-        new_task = PersistentTaskQueue(
-            user_id=payload.user_id,
-            chat_id=payload.user_id,
-            message_id=status_msg.message_id,
-            anilist_id=payload.anilist_id,
-            anime_title=title,
-            episode_num=payload.ep_number,
-            quality=payload.quality,
-            status="pending"
-        )
-        db_session.add(new_task)
-        await db_session.commit()
-        logger.info(f"Enqueued WebApp download task {new_task.id} for User {payload.user_id}")
-        
-    return {"status": "ok"}
+            from app.database.models import PersistentTaskQueue
+            new_task = PersistentTaskQueue(
+                user_id=payload.user_id,
+                chat_id=payload.user_id,
+                message_id=status_msg.message_id,
+                anilist_id=payload.anilist_id,
+                anime_title=title,
+                episode_num=payload.ep_number,
+                quality=payload.quality,
+                status="pending"
+            )
+            db_session.add(new_task)
+            await db_session.commit()
+            logger.info(f"Enqueued WebApp download task {new_task.id} for User {payload.user_id}")
+            
+        return {"status": "ok"}
+    except Exception as e:
+        logger.exception("Webapp Select Quality Exception caught:")
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/webhook")
 async def webhook_endpoint(request: Request):
