@@ -356,14 +356,36 @@ async def self_heal_episode_cache(
         
         # If no SearchCache entry, we can create a temporary mockup
         if not cache_entry:
-            logger.info(f"Self-healing: No SearchCache entry found for anilist_id={anilist_id}. Creating temporary one.")
+            logger.info(f"Self-healing: No SearchCache entry found for anilist_id={anilist_id}. Querying AniList API to resolve details.")
+            anilist_data = None
+            try:
+                from app.services.anilist import get_anime_by_id
+                anilist_data = await get_anime_by_id(anilist_id)
+            except Exception as e:
+                logger.warning(f"Failed to query AniList by ID during self-healing: {e}")
+                
+            if anilist_data:
+                title_english = anilist_data.get("title_english") or anilist_data.get("title_romaji") or anime_title
+                title_romaji = anilist_data.get("title_romaji") or title_english
+                description = anilist_data.get("description") or "لا يوجد"
+                image_url = anilist_data.get("image_url")
+                synonyms = anilist_data.get("synonyms") or []
+            else:
+                title_english = anime_title
+                title_romaji = anime_title
+                description = "لا يوجد"
+                image_url = None
+                synonyms = []
+
             try:
                 cache_entry = SearchCache(
                     query_text=anime_title.lower(),
                     anilist_id=anilist_id,
-                    title_english=anime_title,
-                    title_romaji=anime_title,
-                    description="لا يوجد"
+                    title_english=title_english,
+                    title_romaji=title_romaji,
+                    description=description,
+                    image_url=image_url,
+                    synonyms=synonyms
                 )
                 session.add(cache_entry)
                 await session.commit()
@@ -530,7 +552,6 @@ async def execute_queued_task(
                 reply_markup=nav_markup,
                 parse_mode="HTML"
             )
-            await mirror_video_to_library(bot, db_session_factory, anilist_id, anime_title, episode_num, cached_quality, cached_file_id)
             return True
         except Exception as cached_deliv_err:
             logger.warning(f"Failed instant delivery of file_id {cached_file_id}: {cached_deliv_err}. Falling back to full scraper pipeline.")

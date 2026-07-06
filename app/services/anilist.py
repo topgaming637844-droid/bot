@@ -366,3 +366,82 @@ async def search_kitsu_fallback(search_query: str) -> list[dict[str, Any]]:
         logger.exception(f"Error executing Kitsu fallback search: {e}")
         
     return results
+
+async def get_anime_by_id(anilist_id: int) -> Optional[dict[str, Any]]:
+    """Fetches details of a single anime by its AniList ID directly from AniList API."""
+    if anilist_id < 0:
+        # It's a Kitsu fallback ID, we cannot query it on AniList
+        return None
+        
+    logger.info(f"Fetching details from AniList API for ID: {anilist_id}")
+    url = "https://graphql.anilist.co"
+    query = """
+    query ($id: Int) {
+      Media(id: $id, type: ANIME) {
+        id
+        title {
+          romaji
+          english
+        }
+        synonyms
+        description
+        coverImage {
+          large
+        }
+        duration
+        episodes
+      }
+    }
+    """
+    
+    try:
+        from curl_cffi.requests import AsyncSession as CurlAsyncSession
+        curl_cffi_available = True
+    except ImportError:
+        curl_cffi_available = False
+        CurlAsyncSession = None
+
+    try:
+        from app.utils.user_agents import get_random_user_agent
+        ua = get_random_user_agent()
+    except Exception:
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Origin": "https://anilist.co",
+        "Referer": "https://anilist.co/",
+        "User-Agent": ua
+    }
+    
+    payload = {
+        "query": query,
+        "variables": {"id": anilist_id}
+    }
+    
+    for attempt in range(2):
+        proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if (config.PROXY_URL and attempt == 0) else None
+        try:
+            if curl_cffi_available and CurlAsyncSession:
+                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                    response = await session.post(url, json=payload, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        media = data.get("data", {}).get("Media")
+                        if media:
+                            return await parse_media_node(media)
+            else:
+                connector = get_connector() if attempt == 0 else None
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.post(url, json=payload, headers=headers, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            media = data.get("data", {}).get("Media")
+                            if media:
+                                return await parse_media_node(media)
+        except Exception as e:
+            logger.warning(f"Attempt {attempt} failed in get_anime_by_id: {e}")
+            if attempt == 0:
+                continue
+    return None
