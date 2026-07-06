@@ -78,7 +78,7 @@ async def broadcast_new_episode_notification(
 
 
 async def start_latest_episodes_notifier_loop(bot: Bot, db_session_factory):
-    """Background loop that periodically checks the site for newly released episodes and sends automatic alerts."""
+    """Background loop that periodically checks the site for newly released episodes and sends automatic alerts with delay."""
     if not getattr(config, "ENABLE_LATEST_NOTIFIER", True):
         logger.info("Automatic latest episodes notifier is disabled via config settings.")
         return
@@ -123,6 +123,7 @@ async def start_latest_episodes_notifier_loop(bot: Bot, db_session_factory):
                         await asyncio.sleep(2)
                         
                     await set_setting("notified_episodes_history", json.dumps(initial_keys))
+                    await set_setting("pending_notifications_queue", "{}")
                     logger.info(f"Seeded notification history with {len(initial_keys)} existing site episodes.")
                 else:
                     try:
@@ -130,38 +131,80 @@ async def start_latest_episodes_notifier_loop(bot: Bot, db_session_factory):
                     except Exception:
                         history = []
                         
-                    updated = False
+                    raw_pending = await get_setting("pending_notifications_queue", "{}")
+                    try:
+                        pending_queue = json.loads(raw_pending)
+                    except Exception:
+                        pending_queue = {}
+                        
+                    # 1. Add newly discovered episodes to the pending queue
+                    queue_updated = False
                     for ep in reversed(latest_episodes):
                         ep_key = f"{ep['anime_title']}:{ep['episode_num']}"
-                        if ep_key not in history:
-                            logger.info(f"New released episode detected on site: {ep_key}")
+                        if ep_key not in history and ep_key not in pending_queue:
+                            logger.info(f"New released episode queued for delay: {ep_key}")
+                            pending_queue[ep_key] = {
+                                "anime_title": ep['anime_title'],
+                                "episode_num": ep['episode_num'],
+                                "poster_url": ep.get("poster_url"),
+                                "discovered_at": datetime.now(timezone.utc).isoformat()
+                            }
+                            queue_updated = True
                             
-                            # Try resolving AniList ID if possible
-                            anilist_id = 0
-                            image_url = ep.get("poster_url")
-                            try:
-                                from app.services.anilist import search_anime_anilist
-                                res = await search_anime_anilist(ep['anime_title'])
-                                if res:
-                                    anilist_id = res[0]['anilist_id']
-                                    image_url = res[0].get('image_url') or image_url
-                            except Exception:
-                                pass
-                                
-                            success = await broadcast_new_episode_notification(
-                                bot=bot,
-                                anilist_id=anilist_id,
-                                anime_title=ep['anime_title'],
-                                episode_num=ep['episode_num'],
-                                image_url=image_url
-                            )
+                    if queue_updated:
+                        await set_setting("pending_notifications_queue", json.dumps(pending_queue))
+                        
+                    # 2. Process pending queue and broadcast those that have passed the delay threshold
+                    history_updated = False
+                    keys_to_remove = []
+                    
+                    for ep_key, ep_data in list(pending_queue.items()):
+                        try:
+                            discovered_at = datetime.fromisoformat(ep_data["discovered_at"])
+                            elapsed_seconds = (datetime.now(timezone.utc) - discovered_at).total_seconds()
+                            delay_seconds = getattr(config, "NOTIFICATION_DELAY_MINUTES", 120) * 60
                             
-                            if success:
-                                history.append(ep_key)
-                                updated = True
-                                await asyncio.sleep(3)  # Rate limiting between posts
+                            if elapsed_seconds >= delay_seconds:
+                                logger.info(f"Delay threshold reached for {ep_key} (elapsed: {int(elapsed_seconds)}s, target: {delay_seconds}s). Broadcasting...")
                                 
-                    if updated:
+                                # Try resolving AniList ID if possible
+                                anilist_id = 0
+                                image_url = ep_data.get("poster_url")
+                                try:
+                                    from app.services.anilist import search_anime_anilist
+                                    res = await search_anime_anilist(ep_data['anime_title'])
+                                    if res:
+                                        anilist_id = res[0]['anilist_id']
+                                        image_url = res[0].get('image_url') or image_url
+                                except Exception:
+                                    pass
+                                    
+                                success = await broadcast_new_episode_notification(
+                                    bot=bot,
+                                    anilist_id=anilist_id,
+                                    anime_title=ep_data['anime_title'],
+                                    episode_num=ep_data['episode_num'],
+                                    image_url=image_url
+                                )
+                                
+                                if success:
+                                    history.append(ep_key)
+                                    history_updated = True
+                                    keys_to_remove.append(ep_key)
+                                    await asyncio.sleep(3)  # Rate limiting between posts
+                            else:
+                                logger.info(f"Episode {ep_key} is still pending (elapsed: {int(elapsed_seconds)}s / {delay_seconds}s)")
+                        except Exception as item_err:
+                            logger.warning(f"Error processing pending notification item {ep_key}: {item_err}")
+                            
+                    # Remove sent notifications from the queue
+                    if keys_to_remove:
+                        for k in keys_to_remove:
+                            if k in pending_queue:
+                                del pending_queue[k]
+                        await set_setting("pending_notifications_queue", json.dumps(pending_queue))
+                        
+                    if history_updated:
                         # Keep history capped at last 200 items
                         history = history[-200:]
                         await set_setting("notified_episodes_history", json.dumps(history))

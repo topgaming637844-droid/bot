@@ -20,6 +20,7 @@ class Config:
     
     # Latest Release Notifier Toggle
     ENABLE_LATEST_NOTIFIER = os.getenv("ENABLE_LATEST_NOTIFIER", "True").strip().lower() in ("true", "1", "yes", "on")
+    NOTIFICATION_DELAY_MINUTES = int(os.getenv("NOTIFICATION_DELAY_MINUTES", "120").strip())
 
     # Parse MOCK_MODE boolean
     mock_mode_str = os.getenv("MOCK_MODE", "True").strip().lower()
