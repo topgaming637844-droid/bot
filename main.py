@@ -381,6 +381,10 @@ async def webhook_endpoint(request: Request):
     
     return {"status": "ok"}
 
+@app.get("/")
+async def root_health_check():
+    return {"status": "ok", "service": "anime_bot", "timestamp": time.time()}
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "timestamp": time.time()}
