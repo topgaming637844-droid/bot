@@ -331,8 +331,11 @@ async def self_heal_episode_cache(
             cache_entry.duration = scraped_data["duration"]
             updated = True
         if updated:
-            session.add(cache_entry)
-            await session.commit()
+            try:
+                await session.merge(cache_entry)
+                await session.commit()
+            except Exception:
+                await session.rollback()
             
         # 3. Delete old episodes and write fresh ones
         stmt_del = select(EpisodeCache).where(EpisodeCache.anilist_id == anilist_id)

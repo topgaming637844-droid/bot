@@ -1618,37 +1618,54 @@ async def get_episodes_gogoanime(anime_slug: str) -> Dict[str, Any]:
 
 async def get_download_links_gogoanime(play_url: str) -> Dict[str, str]:
     logger.info(f"Getting Gogoanime download links for: {play_url}")
-    # استخراج النطاق من الرابط
-    domain = play_url.split("/")[2]
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(play_url, headers=get_browser_headers(play_url), timeout=15) as resp:
-                if resp.status != 200:
-                    return {}
-                html = await resp.text()
-                soup = BeautifulSoup(html, "html.parser")
-                # Gogoanime watch page usually has iframe
-                iframe = soup.select_one("iframe")
-                if iframe and iframe.get("src"):
-                    embed_url = iframe["src"]
-                    # Try to resolve embed (could be another page)
-                    async with session.get(embed_url, headers=get_browser_headers(embed_url)) as embed_resp:
-                        if embed_resp.status == 200:
-                            embed_html = await embed_resp.text()
-                            video_src = re.search(r'src=["\']([^"\']+\.mp4[^"\']*)["\']', embed_html)
-                            if video_src:
-                                return {"720p": video_src.group(1)}
-                            hls_src = re.search(r'src=["\']([^"\']+\.m3u8[^"\']*)["\']', embed_html)
-                            if hls_src:
-                                return {"720p": hls_src.group(1)}
-                # Try direct video source in page
-                video_src = re.search(r'<source\s+src=["\']([^"\']+\.mp4[^"\']*)["\']', html)
-                if video_src:
-                    return {"720p": video_src.group(1)}
-                return {}
-    except Exception as e:
-        logger.exception(f"Error getting Gogoanime download links: {e}")
-        return {}
+    ep_slug = play_url.split("/")[-1].strip("/")
+    
+    for domain in GOGOANIME_DOMAINS:
+        target_url = play_url
+        for d in GOGOANIME_DOMAINS:
+            if d in target_url:
+                target_url = target_url.replace(d, domain)
+                break
+        else:
+            target_url = f"https://{domain}/{ep_slug}"
+            
+        logger.info(f"Trying Gogoanime domain mirror: {domain}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(target_url, headers=get_browser_headers(target_url), timeout=12) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"Domain {domain} returned HTTP {resp.status}")
+                        continue
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, "html.parser")
+                    
+                    # 1. Try iframe player embed
+                    iframe = soup.select_one("iframe")
+                    if iframe and iframe.get("src"):
+                        embed_url = iframe["src"]
+                        if embed_url.startswith("//"):
+                            embed_url = f"https:{embed_url}"
+                        async with session.get(embed_url, headers=get_browser_headers(embed_url), timeout=10) as embed_resp:
+                            if embed_resp.status == 200:
+                                embed_html = await embed_resp.text()
+                                video_src = re.search(r'["\'](https?://[^"\']+\.mp4[^"\']*)["\']', embed_html)
+                                if video_src:
+                                    logger.info(f"Resolved Gogoanime mp4 link on {domain}")
+                                    return {"720p": video_src.group(1)}
+                                hls_src = re.search(r'["\'](https?://[^"\']+\.m3u8[^"\']*)["\']', embed_html)
+                                if hls_src:
+                                    logger.info(f"Resolved Gogoanime m3u8 link on {domain}")
+                                    return {"720p": hls_src.group(1)}
+                    
+                    # 2. Direct regex scan for video sources
+                    hls_match = re.search(r'https?://[^\s"\'\\]+?\.m3u8[^\s"\'\\]*', html)
+                    if hls_match:
+                        logger.info(f"Resolved direct Gogoanime m3u8 on {domain}")
+                        return {"720p": hls_match.group(0)}
+        except Exception as e:
+            logger.warning(f"Gogoanime download link resolution failed on {domain}: {e}")
+            
+    return {}
 
 async def resolve_anime_slug_scraper(
     title_romaji: Optional[str], 

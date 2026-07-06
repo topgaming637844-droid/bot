@@ -182,6 +182,16 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
         
     return 0
 
+def get_default_estimated_size(quality_hint: str = "720p") -> int:
+    """Fallback estimated size when HEAD/HLS size query returns 0."""
+    if "1080" in quality_hint:
+        return 750 * 1024 * 1024
+    if "480" in quality_hint:
+        return 220 * 1024 * 1024
+    if "360" in quality_hint:
+        return 120 * 1024 * 1024
+    return 350 * 1024 * 1024
+
 async def select_best_quality(qualities: Dict[str, str], requested_quality: str = "auto") -> Tuple[str, str, int]:
     """
     Smart Size Logic:
@@ -199,8 +209,10 @@ async def select_best_quality(qualities: Dict[str, str], requested_quality: str 
         for q in available_qualities:
             url = qualities[q]
             size = await get_url_file_size(url, session)
+            if size == 0:
+                size = get_default_estimated_size(q)
             resolved_sizes[q] = size
-            logger.info(f"Checking quality {q}: Exact size is {size / (1024*1024):.2f} MB")
+            logger.info(f"Checking quality {q}: Size is {size / (1024*1024):.2f} MB")
             
             if size > 0 and size <= MAX_TELEGRAM_LOCAL_SIZE:
                 return q, url, size
@@ -209,7 +221,7 @@ async def select_best_quality(qualities: Dict[str, str], requested_quality: str 
         url = qualities[lowest_q]
         size = resolved_sizes.get(lowest_q, 0)
         if size == 0:
-            size = await get_url_file_size(url, session)
+            size = get_default_estimated_size(lowest_q)
         return lowest_q, url, size
 
 async def download_segment(
