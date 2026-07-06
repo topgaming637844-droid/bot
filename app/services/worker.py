@@ -776,26 +776,5 @@ async def mirror_video_to_library(
             parse_mode="HTML"
         )
         logger.info(f"Successfully mirrored {anime_title} ep {episode_num} to library thread {topic_id}")
-
-        # Trigger automatic notification to notification group (-1003876536923)
-        try:
-            from app.services.notification import broadcast_new_episode_notification
-            from app.database.models import SearchCache
-            
-            image_url = None
-            async with db_session_factory() as session:
-                stmt_img = select(SearchCache.image_url).where(SearchCache.anilist_id == anilist_id)
-                res_img = await session.execute(stmt_img)
-                image_url = res_img.scalar_one_or_none()
-                
-            await broadcast_new_episode_notification(
-                bot=bot,
-                anilist_id=anilist_id,
-                anime_title=anime_title,
-                episode_num=episode_num,
-                image_url=image_url
-            )
-        except Exception as notif_err:
-            logger.warning(f"Error triggering automatic new episode notification: {notif_err}")
     except Exception as mirror_e:
         logger.warning(f"Error mirroring video to library group: {mirror_e}")
