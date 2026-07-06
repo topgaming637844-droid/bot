@@ -658,6 +658,9 @@ async def get_admin_panel_data(db_session: AsyncSession):
         ],
         [
             InlineKeyboardButton(text="• اعدادات بوت الازرار •", callback_data="admin_button_settings")
+        ],
+        [
+            InlineKeyboardButton(text="📢 مجموعة/قناة الإشعارات التلقائية", callback_data="admin_set_notif_group")
         ]
     ])
     
@@ -1567,3 +1570,67 @@ async def process_admin_bg_photo(message: Message, db_session: AsyncSession, sta
         logger.exception("Error processing background photo")
         import html
         await status_msg.edit_text(f"❌ فشل تحديث الصورة: {html.escape(str(e))}")
+
+
+@router.callback_query(F.data == "admin_set_notif_group")
+async def handle_admin_set_notif_group(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await safe_answer(callback)
+    from app.utils.settings import get_setting
+    current_val = await get_setting("notification_group_id", "-1003876536923")
+    
+    await state.set_state(AdminStates.waiting_for_notif_group_id)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ تعطيل الإشعارات التلقائية", callback_data="admin_disable_notif_group")],
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_home")]
+    ])
+    
+    await callback.message.edit_text(
+        f"📢 <b>تحديد مجموعة/قناة الإشعارات التلقائية:</b>\n\n"
+        f"المعرف الحالي: <code>{current_val}</code>\n\n"
+        f"يرجى إرسال المعرف (ID) الجديد لمجموعة الإشعارات (مثل: <code>-1003876536923</code> أو <code>@mychannel</code>):\n"
+        f"<i>تأكد من إضافة البوت كأدمن في المجموعة/القناة ليتسنى له إرسال التنبيهات.</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "admin_disable_notif_group")
+async def handle_admin_disable_notif_group(callback: CallbackQuery, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+    from app.utils.settings import set_setting
+    await set_setting("notification_group_id", "disabled")
+    await state.clear()
+    await safe_answer(callback, "✅ تم تعطيل الإشعارات التلقائية بنجاح.", show_alert=True)
+    await callback.message.edit_text("✅ تم تعطيل الإشعارات التلقائية للمجموعات.")
+
+@router.message(AdminStates.waiting_for_notif_group_id)
+async def process_admin_notif_group(message: Message, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        return
+        
+    text = message.text.strip()
+    if not text:
+        await message.answer("❌ يرجى إدخال معرف آيدي صحيح.")
+        return
+        
+    from app.utils.settings import set_setting
+    await set_setting("notification_group_id", text)
+    await state.clear()
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")]
+    ])
+    await message.answer(
+        f"✅ <b>تم تحديث مجموعة/قناة الإشعارات التلقائية بنجاح!</b>\n\n"
+        f"المعرف المحدد: <code>{text}</code>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )

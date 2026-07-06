@@ -136,8 +136,10 @@ async def lifespan(app: FastAPI):
             logger.exception("Failed to delete webhook on startup")
         asyncio.create_task(dp.start_polling(bot, handle_signals=False))
 
-    # 8. Start Background Async Consumer Loop
+    # 8. Start Background Async Consumer Loop & Latest Episodes Notifier Loop
     asyncio.create_task(task_consumer_worker(bot, AsyncSessionLocal))
+    from app.services.notification import start_latest_episodes_notifier_loop
+    asyncio.create_task(start_latest_episodes_notifier_loop(bot, AsyncSessionLocal))
 
     yield
 

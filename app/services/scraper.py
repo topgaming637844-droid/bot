@@ -1709,3 +1709,61 @@ async def resolve_anime_slug_scraper(
 
     logger.warning(f"Could not resolve any slug for romaji='{title_romaji}', english='{title_english}'")
     return None
+
+async def fetch_latest_site_episodes() -> List[Dict[str, Any]]:
+    """Scrapes recently uploaded episodes from WitAnime homepage / latest episodes page."""
+    logger.info("Scraping latest released episodes from site...")
+    headers = {"User-Agent": get_random_user_agent()}
+    url = f"https://{WITANIME_DOMAIN}/latest-episodes/"
+    results = []
+    
+    try:
+        if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                resp = await session.get(url, headers=headers, timeout=12)
+                html_text = resp.text if resp.status_code == 200 else ""
+        else:
+            connector = get_connector()
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, headers=headers, timeout=12) as resp:
+                    html_text = await resp.text() if resp.status == 200 else ""
+                        
+        if not html_text:
+            return []
+            
+        soup = BeautifulSoup(html_text, "html.parser")
+        items = soup.select(".anime-card-container, .episodes-card-container, div.anime-card-post, div.epcontent div.epcard")
+        if not items:
+            items = soup.select("div.content div.anime-card-details")
+            
+        for item in items[:15]:
+            a_tag = item.select_one("a")
+            if not a_tag or not a_tag.get("href"):
+                continue
+            play_url = a_tag["href"]
+            title_tag = item.select_one(".anime-card-title, .epcard-title, h3, h2")
+            raw_title = title_tag.text.strip() if title_tag else a_tag.get("title", "")
+            
+            img_tag = item.select_one("img")
+            poster_url = img_tag.get("src") or img_tag.get("data-src") if img_tag else None
+            
+            if "الحلقة" in raw_title:
+                parts = raw_title.split("الحلقة")
+                anime_name = parts[0].strip(" -").strip()
+                ep_num = parts[1].strip(" -").strip()
+            else:
+                anime_name = raw_title
+                ep_num = "1"
+                
+            results.append({
+                "anime_title": anime_name,
+                "episode_num": ep_num,
+                "play_url": play_url,
+                "poster_url": poster_url
+            })
+        logger.info(f"Fetched {len(results)} latest released episodes from site")
+        return results
+    except Exception as e:
+        logger.warning(f"Error fetching latest site episodes: {e}")
+        return []
