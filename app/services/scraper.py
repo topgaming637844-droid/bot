@@ -34,7 +34,8 @@ async def get_html_headless(url: str) -> str:
             html = await page.content()
             await browser.close()
             return html
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Playwright headless fetch failed for {url}: {e}")
         return ""
 # ===== تعريف المتغيرات أولاً مع قيم افتراضية =====
 CURL_CFFI_AVAILABLE = False

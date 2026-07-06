@@ -1,0 +1,12 @@
+[phases.setup]
+pkgs = [
+    "libgbm", "libxkbcommon", "libXcomposite", "libXdamage", "libXext", 
+    "libXfixes", "libXrandr", "libxcb", "expat", "pango", 
+    "cairo", "alsa-lib"
+]
+
+[phases.install]
+cmds = [
+    "pip install -r requirements.txt",
+    "playwright install --with-deps chromium"
+]
