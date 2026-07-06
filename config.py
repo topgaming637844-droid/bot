@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+# Enforce a fixed writeable directory for Playwright browser binaries
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
+
+
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///bot.db").strip()
