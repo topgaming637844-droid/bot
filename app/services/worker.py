@@ -152,10 +152,69 @@ async def enqueue_persistent_download_task(
         logger.info(f"Enqueued persistent download task {new_task.id} for User {user_id}: {anime_title} Ep {episode_num}")
         return new_task
 
-async def recover_stuck_tasks(db_session_factory):
-    """Resets any 'processing' tasks back to 'pending' on startup."""
+async def acquire_lock(anilist_id: int, ep_number: str, task_id: int, db_session_factory) -> bool:
+    """Attempts to acquire an exclusive processing lock for (anilist_id, ep_number). Returns True if acquired."""
+    from app.database.models import DownloadLock
+    from sqlalchemy.exc import IntegrityError
     try:
         async with db_session_factory() as session:
+            stmt = select(DownloadLock).where(
+                (DownloadLock.anilist_id == anilist_id) &
+                (DownloadLock.ep_number == str(ep_number))
+            )
+            res = await session.execute(stmt)
+            existing_lock = res.scalar_one_or_none()
+            
+            if existing_lock:
+                if existing_lock.locked_at:
+                    delta = (datetime.now(timezone.utc) - existing_lock.locked_at).total_seconds()
+                    if delta > 600:
+                        logger.warning(f"Clearing expired lock on anilist_id={anilist_id}, ep={ep_number} (age: {delta:.0f}s)")
+                        await session.delete(existing_lock)
+                        await session.commit()
+                    else:
+                        return False
+                else:
+                    return False
+                    
+            lock = DownloadLock(anilist_id=anilist_id, ep_number=str(ep_number), task_id=task_id)
+            session.add(lock)
+            await session.commit()
+            logger.info(f"Acquired DownloadLock for anilist_id={anilist_id}, ep={ep_number} by task {task_id}")
+            return True
+    except (IntegrityError, Exception) as e:
+        logger.info(f"Lock already held for anilist_id={anilist_id}, ep={ep_number}: {e}")
+        return False
+
+async def release_lock(anilist_id: int, ep_number: str, db_session_factory) -> None:
+    """Releases the processing lock for (anilist_id, ep_number)."""
+    from app.database.models import DownloadLock
+    try:
+        async with db_session_factory() as session:
+            stmt = select(DownloadLock).where(
+                (DownloadLock.anilist_id == anilist_id) &
+                (DownloadLock.ep_number == str(ep_number))
+            )
+            res = await session.execute(stmt)
+            lock = res.scalar_one_or_none()
+            if lock:
+                await session.delete(lock)
+                await session.commit()
+                logger.info(f"Released DownloadLock for anilist_id={anilist_id}, ep={ep_number}")
+    except Exception as e:
+        logger.warning(f"Error releasing lock for anilist_id={anilist_id}, ep={ep_number}: {e}")
+
+async def recover_stuck_tasks(db_session_factory):
+    """Resets any 'processing' tasks back to 'pending' on startup and clears all locks."""
+    try:
+        from app.database.models import DownloadLock
+        from sqlalchemy import delete
+        async with db_session_factory() as session:
+            try:
+                await session.execute(delete(DownloadLock))
+            except Exception as lock_clean_err:
+                logger.warning(f"Note: Could not clear DownloadLock table on boot: {lock_clean_err}")
+                
             stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.status == "processing")
             res = await session.execute(stmt)
             stuck_tasks = res.scalars().all()
@@ -181,13 +240,19 @@ async def _process_single_task_wrapper(
     db_session_factory
 ):
     success = False
+    is_locked_wait = False
     try:
-        success = await asyncio.wait_for(
+        result = await asyncio.wait_for(
             execute_queued_task(
                 task_id, user_id, chat_id, message_id, anilist_id, anime_title, episode_num, quality, bot, db_session_factory
             ),
             timeout=600  # 10 minutes max
         )
+        if result == "LOCKED_WAIT":
+            is_locked_wait = True
+            success = False
+        else:
+            success = bool(result)
     except asyncio.TimeoutError:
         logger.error(f"Task {task_id} timed out after 600 seconds")
         success = False
@@ -195,16 +260,21 @@ async def _process_single_task_wrapper(
         logger.exception(f"Error or cancellation processing task ID {task_id}: {e}")
         success = False
     finally:
+        await release_lock(anilist_id, episode_num, db_session_factory)
         try:
             async with db_session_factory() as session:
                 stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.id == task_id)
                 res = await session.execute(stmt)
                 db_task = res.scalar_one_or_none()
                 if db_task:
-                    db_task.status = "completed" if success else "failed"
+                    if is_locked_wait:
+                        db_task.status = "pending"
+                        logger.info(f"Task {task_id} waiting on lock, reset status to 'pending'")
+                    else:
+                        db_task.status = "completed" if success else "failed"
+                        logger.info(f"Updated task {task_id} final status to '{db_task.status}'")
                     db_task.updated_at = datetime.now(timezone.utc)
                     await session.commit()
-                    logger.info(f"Updated task {task_id} final status to '{db_task.status}'")
         except Exception as final_err:
             logger.error(f"Failed to update final status for task {task_id}: {final_err}")
 
@@ -216,30 +286,47 @@ async def task_consumer_worker(bot: Bot, db_session_factory):
 
     while True:
         try:
-            # Clean up finished tasks from set
             active_worker_tasks = {t for t in active_worker_tasks if not t.done()}
-            
             if len(active_worker_tasks) < MAX_CONCURRENT_WORKER_TASKS:
                 async with db_session_factory() as session:
-                    stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.status == "pending").order_by(PersistentTaskQueue.id.asc()).limit(1)
+                    from app.database.models import DownloadLock
+                    # Fetch active processing episode combinations
+                    stmt_active = select(PersistentTaskQueue.anilist_id, PersistentTaskQueue.episode_num).where(PersistentTaskQueue.status == "processing")
+                    res_active = await session.execute(stmt_active)
+                    active_pairs = set(res_active.all())
+
+                    stmt_locks = select(DownloadLock.anilist_id, DownloadLock.ep_number)
+                    try:
+                        res_locks = await session.execute(stmt_locks)
+                        active_pairs.update(res_locks.all())
+                    except Exception:
+                        pass
+
+                    stmt = select(PersistentTaskQueue).where(PersistentTaskQueue.status == "pending").order_by(PersistentTaskQueue.id.asc()).limit(10)
                     res = await session.execute(stmt)
-                    task = res.scalars().first()
-                    if task:
-                        task.status = "processing"
-                        task.updated_at = datetime.now(timezone.utc)
+                    pending_tasks = res.scalars().all()
+                    
+                    candidate_task = None
+                    for pt in pending_tasks:
+                        if (pt.anilist_id, pt.episode_num) not in active_pairs:
+                            candidate_task = pt
+                            break
+                            
+                    if candidate_task:
+                        candidate_task.status = "processing"
+                        candidate_task.updated_at = datetime.now(timezone.utc)
                         
-                        t_id = task.id
-                        u_id = task.user_id
-                        c_id = task.chat_id
-                        m_id = task.message_id
-                        a_id = task.anilist_id
-                        a_title = task.anime_title
-                        ep_num = task.episode_num
-                        q_val = task.quality
+                        t_id = candidate_task.id
+                        u_id = candidate_task.user_id
+                        c_id = candidate_task.chat_id
+                        m_id = candidate_task.message_id
+                        a_id = candidate_task.anilist_id
+                        a_title = candidate_task.anime_title
+                        ep_num = candidate_task.episode_num
+                        q_val = candidate_task.quality
                         
                         await session.commit()
                         
-                        # Launch task concurrently in parallel
                         worker_task = asyncio.create_task(
                             _process_single_task_wrapper(
                                 t_id, u_id, c_id, m_id, a_id, a_title, ep_num, q_val, bot, db_session_factory
@@ -457,6 +544,24 @@ async def execute_queued_task(
             return True
         except Exception as cached_deliv_err:
             logger.warning(f"Failed instant delivery of file_id {cached_file_id}: {cached_deliv_err}. Falling back to full scraper pipeline.")
+
+    # 0.5 Acquire exclusive DownloadLock for episode
+    lock_acquired = await acquire_lock(anilist_id, episode_num, task_id, db_session_factory)
+    if not lock_acquired:
+        logger.info(f"Task {task_id} waiting for lock on anilist_id={anilist_id}, ep={episode_num}")
+        if status_msg_id:
+            try:
+                await bot.edit_message_text(
+                    "⏳ <b>الحلقة المطلوبة قيد التحضير/التحميل حالياً بواسطة مستخدم آخر.</b>\n\n"
+                    "ستصلك الحلقة فور انتهاء معالجتها تلقائياً خلال لحظات... 🍿✨",
+                    chat_id=chat_id,
+                    message_id=status_msg_id,
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+        await asyncio.sleep(5)
+        return "LOCKED_WAIT"
 
     # 1. Resolve play_url from EpisodeCache
     async with db_session_factory() as session:

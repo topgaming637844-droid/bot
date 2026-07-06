@@ -1546,11 +1546,12 @@ async def try_fetch_anime_page_with_fallbacks(session: Any, anime_slug: str) -> 
 # ======================== GOGOANIME SCRAPER ========================
 # ======================== GOGOANIME SCRAPER ========================
 GOGOANIME_DOMAINS = [
+    "gogoanime3.cc",
+    "gogoanime.bz",
+    "gogoanime.ar",
+    "gogoanime.tel",
     "gogoanime3.co",
-    "gogoanime.gg",
-    "gogoanime.life",
-    "gogoanime.ma",
-    "gogoanime.tel"
+    "gogoanime.ws"
 ]
 
 async def search_anime_gogoanime(title: str) -> List[Dict[str, Any]]:

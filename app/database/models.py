@@ -150,4 +150,14 @@ class CustomButton(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class DownloadLock(Base):
+    """Locks an active episode processing task to prevent duplicate concurrent scraping & downloads."""
+    __tablename__ = "download_locks"
+
+    anilist_id = Column(BigInteger, primary_key=True)
+    ep_number = Column(String(50), primary_key=True)
+    task_id = Column(Integer, nullable=False)
+    locked_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 
