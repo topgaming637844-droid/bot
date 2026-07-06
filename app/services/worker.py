@@ -527,7 +527,8 @@ async def self_heal_episode_cache(
         # Fallback: Scrape Gogoanime for the missing episode
         logger.info(f"Self-healing: Episode {episode_num} not found on WitAnime. Trying Gogoanime fallback...")
         try:
-            from app.services.scraper import search_anime_gogoanime, get_best_slug_match, get_episodes_gogoanime
+            from app.services.scraper import search_anime_gogoanime, get_episodes_gogoanime
+            from app.utils.match import get_best_slug_match
             search_title = cache_entry.title_romaji or cache_entry.title_english or anime_title
             gogo_results = await search_anime_gogoanime(search_title)
             if gogo_results:
