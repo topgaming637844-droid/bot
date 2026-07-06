@@ -50,6 +50,15 @@ async def init_db():
         except Exception as e:
             print(f"Info on column migration for telegram_file_cache.file_size: {e}")
 
+        # Column migration for custom_buttons table
+        try:
+            if is_sqlite:
+                await conn.execute(text("ALTER TABLE custom_buttons ADD COLUMN response_text TEXT;"))
+            else:
+                await conn.execute(text("ALTER TABLE custom_buttons ADD COLUMN IF NOT EXISTS response_text TEXT;"))
+        except Exception as e:
+            print(f"Info on column migration for custom_buttons.response_text: {e}")
+
         # Column migrations for users table
         for col_name, col_type in [("first_name", "VARCHAR(255)"), ("last_name", "VARCHAR(255)"), ("is_blocked", "BOOLEAN DEFAULT FALSE")]:
             try:

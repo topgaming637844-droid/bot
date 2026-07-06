@@ -19,6 +19,8 @@ class AdminStates(StatesGroup):
     waiting_for_channel = State()
     waiting_for_bg_photo = State()
     waiting_for_custom_button_name = State()
+    waiting_for_custom_button_response_text = State()
+    waiting_for_static_msg_text = State()
 
 router = Router(name="admin")
 
@@ -829,30 +831,152 @@ async def handle_admin_button_settings(callback: CallbackQuery, db_session: Asyn
     buttons = res.scalars().all()
     
     text = (
-        "⚙️ <b>اعدادات بوت الازرار</b>\n\n"
-        "هذه اللوحة تمكنك من تعديل الأزرار التفاعلية للأقسام والمجلدات المعروضة للمستخدمين.\n\n"
-        "الأزرار الحالية:\n"
+        "⚙️ <b>إعدادات أزرار البوت والرسائل الثابتة</b>\n\n"
+        "هذه اللوحة تمكنك من إضافة وتعديل الأزرار التفاعلية ونصوص الردود المخصصة والرسائل الثابتة للمستخدمين.\n\n"
+        "<b>الأزرار الحالية:</b>\n"
     )
     if not buttons:
         text += "لا يوجد أزرار مضافة حالياً. اضغط أدناه لإضافة زر."
     else:
-        text += "اضغط على أي زر أدناه لحذفه ❌:\n"
+        text += "يمكنك حذف الزر ❌ أو تحرير نص الرد المخصص له ✏️:\n"
         
     inline_keyboard = []
-    row = []
     for btn in buttons:
-        row.append(InlineKeyboardButton(text=f"❌ {btn.text}", callback_data=f"delete_btn:{btn.id}"))
-        if len(row) == 2:
-            inline_keyboard.append(row)
-            row = []
-    if row:
-        inline_keyboard.append(row)
+        inline_keyboard.append([
+            InlineKeyboardButton(text=f"❌ حذف {btn.text}", callback_data=f"delete_btn:{btn.id}"),
+            InlineKeyboardButton(text=f"✏️ تعديل الرد", callback_data=f"edit_btn_text:{btn.id}")
+        ])
         
     inline_keyboard.append([InlineKeyboardButton(text="➕ إضافة زر جديد", callback_data="add_custom_btn")])
+    inline_keyboard.append([InlineKeyboardButton(text="📝 تحرير الرسائل الثابتة (الدعم/الإعلانات/المساعدة)", callback_data="admin_edit_static_msgs")])
     inline_keyboard.append([InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin_edit_static_msgs")
+async def handle_admin_edit_static_msgs(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+    await safe_answer(callback)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ تحرير رسالة الدعم الفني (Support)", callback_data="edit_static:custom_msg_support")],
+        [InlineKeyboardButton(text="✏️ تحرير رسالة للإعلانات والتمويل (Ads)", callback_data="edit_static:custom_msg_ads")],
+        [InlineKeyboardButton(text="✏️ تحرير رسالة المساعدة والدليل (Help)", callback_data="edit_static:custom_msg_help")],
+        [InlineKeyboardButton(text="🔙 رجوع لإعدادات الأزرار", callback_data="admin_button_settings")]
+    ])
+    
+    await callback.message.edit_text(
+        "✏️ <b>تحرير نصوص الرسائل الثابتة الرئيسية:</b>\n\n"
+        "اختر الزر الثابت الذي ترغب في تعديل رسالته التوضيحية المعروضة للمستخدمين:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("edit_static:"))
+async def handle_edit_static_key(callback: CallbackQuery, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+    await safe_answer(callback)
+    
+    setting_key = callback.data.split(":", 1)[1]
+    await state.update_data(setting_key=setting_key)
+    await state.set_state(AdminStates.waiting_for_static_msg_text)
+    
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_edit_static_msgs")]
+    ])
+    
+    await callback.message.edit_text(
+        f"📝 <b>أرسل نص الرسالة الجديد لهذا الزر الثابت:</b>\n\n"
+        f"<i>يمكنك إرسال الرسالة منسقة بصيغة HTML (روابط، خط عريض، إلخ).</i>",
+        reply_markup=cancel_kb,
+        parse_mode="HTML"
+    )
+
+@router.message(AdminStates.waiting_for_static_msg_text)
+async def process_static_msg_text(message: Message, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        await message.answer("❌ غير مصرح لك.")
+        await state.clear()
+        return
+        
+    data = await state.get_data()
+    setting_key = data.get("setting_key")
+    new_text = message.text.strip()
+    
+    if not setting_key or not new_text:
+        await message.answer("⚠️ نص غير صالح.")
+        await state.clear()
+        return
+        
+    from app.utils.settings import set_setting
+    await set_setting(setting_key, new_text)
+    await state.clear()
+    
+    await message.answer("✅ <b>تم حفظ نص الرسالة الثابتة بنجاح!</b>", parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("edit_btn_text:"))
+async def handle_edit_btn_text(callback: CallbackQuery, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+    await safe_answer(callback)
+    
+    btn_id = int(callback.data.split(":")[1])
+    await state.update_data(btn_id=btn_id)
+    await state.set_state(AdminStates.waiting_for_custom_button_response_text)
+    
+    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_button_settings")]
+    ])
+    
+    await callback.message.edit_text(
+        "📝 <b>أرسل نص الرسالة المخصصة لهذا الزر:</b>\n\n"
+        "سيظهر هذا النص للمستخدم مباشرة عند النقر على هذا الزر.",
+        reply_markup=cancel_kb,
+        parse_mode="HTML"
+    )
+
+@router.message(AdminStates.waiting_for_custom_button_response_text)
+async def process_custom_button_response_text(message: Message, state: FSMContext, db_session: AsyncSession):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        await message.answer("❌ غير مصرح لك.")
+        await state.clear()
+        return
+        
+    data = await state.get_data()
+    btn_id = data.get("btn_id")
+    new_response = message.text.strip()
+    
+    if not btn_id or not new_response:
+        await message.answer("⚠️ نص غير صالح.")
+        await state.clear()
+        return
+        
+    from app.database.models import CustomButton
+    stmt = select(CustomButton).where(CustomButton.id == btn_id)
+    res = await db_session.execute(stmt)
+    btn = res.scalar_one_or_none()
+    
+    if btn:
+        btn.response_text = new_response
+        db_session.add(btn)
+        await db_session.commit()
+        await message.answer(f"✅ <b>تم تحديث نص الرد للزر '{btn.text}' بنجاح!</b>", parse_mode="HTML")
+    else:
+        await message.answer("❌ لم يتم العثور على الزر.")
+        
+    await state.clear()
 
 @router.callback_query(F.data == "add_custom_btn")
 async def handle_add_custom_btn(callback: CallbackQuery, state: FSMContext, db_session: AsyncSession):

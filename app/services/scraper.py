@@ -10,7 +10,12 @@ from urllib.parse import quote, urljoin
 WITANIME_DOMAIN = "witanime.life"
 GOGOANIME_DOMAINS = [
     "gogoanime3.co",
+    "gogoanime3.cc",
     "gogoanime.gg",
+    "gogoanime.bz",
+    "gogoanime.ar",
+    "gogoanime.ru",
+    "gogoanime.ws",
     "gogoanime.life",
     "gogoanime.ma",
     "gogoanime.tel"
