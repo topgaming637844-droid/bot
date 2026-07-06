@@ -98,7 +98,7 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
                     data = await response.read()
                     if data.startswith(b"\x89PNG"):
                         data = data[252:]
-                    text = data.decode("utf-8")
+                    text = data.decode("utf-8", errors="ignore")
                     lines = text.splitlines()
                     
                     playlist_url = url
@@ -114,7 +114,7 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
                                 sub_data = await sub_resp.read()
                                 if sub_data.startswith(b"\x89PNG"):
                                     sub_data = sub_data[252:]
-                                text = sub_data.decode("utf-8")
+                                text = sub_data.decode("utf-8", errors="ignore")
                                 lines = text.splitlines()
                             
                     segment_urls = [urljoin(playlist_url, l.strip()) for l in lines if l.strip() and not l.startswith("#")]

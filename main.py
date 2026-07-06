@@ -41,6 +41,19 @@ async def restore_persistent_settings(bot: Bot):
     # 2. Restore Custom Thumbnail Photo (not downloaded locally)
     pass
 
+def safe_create_task(coro, name=None):
+    """Creates an asyncio task and attaches an error handling callback to log unhandled exceptions."""
+    task = asyncio.create_task(coro, name=name) if name else asyncio.create_task(coro)
+    def _on_done(t):
+        try:
+            if not t.cancelled() and t.exception():
+                ex = t.exception()
+                logger.error(f"Unhandled exception in background task '{t.get_name()}': {ex}", exc_info=ex)
+        except Exception:
+            pass
+    task.add_done_callback(_on_done)
+    return task
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Validate configuration
@@ -127,19 +140,22 @@ async def lifespan(app: FastAPI):
 
     if webhook_url:
         logger.info(f"Setting webhook dynamically to: {webhook_url}")
-        await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        try:
+            await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        except Exception as wh_err:
+            logger.warning(f"Failed to set webhook: {wh_err}")
     else:
         logger.warning("WEBHOOK_URL is not set. Webhook was not registered dynamically. Falling back to Long Polling in background...")
         try:
             await bot.delete_webhook(drop_pending_updates=True)
         except Exception:
             logger.exception("Failed to delete webhook on startup")
-        asyncio.create_task(dp.start_polling(bot, handle_signals=False))
+        safe_create_task(dp.start_polling(bot, handle_signals=False), name="polling_task")
 
     # 8. Start Background Async Consumer Loop & Latest Episodes Notifier Loop
-    asyncio.create_task(task_consumer_worker(bot, AsyncSessionLocal))
+    safe_create_task(task_consumer_worker(bot, AsyncSessionLocal), name="consumer_worker_task")
     from app.services.notification import start_latest_episodes_notifier_loop
-    asyncio.create_task(start_latest_episodes_notifier_loop(bot, AsyncSessionLocal))
+    safe_create_task(start_latest_episodes_notifier_loop(bot, AsyncSessionLocal), name="notifier_loop_task")
 
     yield
 
@@ -349,7 +365,7 @@ async def webhook_endpoint(request: Request):
     
     # Process the update asynchronously in the background.
     # This responds to Telegram instantly, preventing connection timeouts and duplicate retry loops.
-    asyncio.create_task(dp.feed_update(bot, update))
+    safe_create_task(dp.feed_update(bot, update), name="webhook_feed_update")
     
     return {"status": "ok"}
 

@@ -9,10 +9,10 @@ from urllib.parse import quote, urljoin
 
 WITANIME_DOMAIN = "witanime.life"
 GOGOANIME_DOMAINS = [
-    "gogoanime3.co",
     "gogoanime3.cc",
-    "gogoanime.gg",
+    "gogoanime3.co",
     "gogoanime.bz",
+    "gogoanime.gg",
     "gogoanime.ar",
     "gogoanime.ru",
     "gogoanime.ws",
@@ -1292,6 +1292,20 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
                 logger.exception(f"Error processing watch page domain mirror {target_url}: {e}")
                 
         logger.warning(f"All standard parsing and blind regex harvesting mirrors failed for: {play_url}")
+        
+        # Fallback to Gogoanime if WitAnime returned no download links
+        try:
+            logger.info(f"WitAnime parsing returned 0 links for {play_url}. Attempting Gogoanime fallback...")
+            slug_match = re.search(r'/episode/([^/]+)/?', play_url)
+            if slug_match:
+                slug = slug_match.group(1).lower()
+                gogo_links = await get_download_links_gogoanime(slug)
+                if gogo_links:
+                    logger.info(f"Gogoanime fallback successfully resolved {len(gogo_links)} links for {slug}")
+                    return gogo_links
+        except Exception as fallback_err:
+            logger.warning(f"Gogoanime fallback failed for {play_url}: {fallback_err}")
+
         return {}
     except Exception:
         logger.exception("Error in process while scraping download links")
