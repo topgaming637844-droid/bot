@@ -1,0 +1,23 @@
+--- Selectors on Homepage ---
+Found .episodes-card-container: 32
+Ep Card 1: الحلقة 2 | Link: https://witanime.life/episode/world-is-dancing-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-2/
+Ep Card 2: الحلقة 37 | Link: https://witanime.life/episode/digimon-beatbreak-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-37/
+Ep Card 3: الحلقة 14 | Link: https://witanime.life/episode/liar-game-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-14/
+Ep Card 4: الحلقة 1 | Link: https://witanime.life/episode/suterare-seijo-no-isekai-gohan-tabi-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 5: الحلقة 1 | Link: https://witanime.life/episode/grand-blue-season-3-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 6: الحلقة 1 | Link: https://witanime.life/episode/tenkou-saki-no-seiso-karen-na-bishoujo-ga-mukashi-danshi-to-omotte-issho-ni-asonda-osananajimi-datta-ken-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 7: الحلقة 1 | Link: https://witanime.life/episode/buchigire-reijou-wa-houfuku-wo-chikaimashita-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 8: الحلقة 1 | Link: https://witanime.life/episode/saikyou-degarashi-ouji-no-anyaku-teii-arasoi-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 9: الحلقة 1 | Link: https://witanime.life/episode/toumei-na-yoru-ni-kakeru-kimi-to-me-ni-mienai-koi-wo-shita-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-1/
+Ep Card 10: الحلقة الخاصة 1 | Link: https://witanime.life/episode/%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-%d8%a7%d9%84%d8%ae%d8%a7%d8%b5%d8%a9-one-piece-heroines/
+Found .anime-card-container: 18
+Anime Card 1:  | Link: https://witanime.life/anime/youkoso-jitsuryoku-shijou-shugi-no-kyoushitsu-e-4th-season-2-nensei-hen-1-gakki/
+Anime Card 2:  | Link: https://witanime.life/anime/yomi-no-tsugai/
+Anime Card 3:  | Link: https://witanime.life/anime/tensei-shitara-slime-datta-ken-4th-season/
+Anime Card 4:  | Link: https://witanime.life/anime/rezero-kara-hajimeru-isekai-seikatsu-4th-season/
+Anime Card 5:  | Link: https://witanime.life/anime/dr-stone-science-future-part-3/
+Anime Card 6:  | Link: https://witanime.life/anime/dorohedoro-season-2/
+Anime Card 7:  | Link: https://witanime.life/anime/rakudai-kenja-no-gakuin-musou-nidome-no-tensei-s-rank-cheat-majutsushi-boukenroku/
+Anime Card 8:  | Link: https://witanime.life/anime/blades-of-the-guardians-season-2-biao-ren-2/
+Anime Card 9:  | Link: https://witanime.life/anime/heroine-seijo-iie-all-works-maid-desu-hokori/
+Anime Card 10:  | Link: https://witanime.life/anime/tsuihou-sareta-tensei-juukishi-wa-game-chishiki-de-musou-suru/

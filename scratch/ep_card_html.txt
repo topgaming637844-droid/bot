@@ -1,0 +1,23 @@
+<div class="episodes-card-container">
+ <div class="episodes-card">
+  <div class="hover ehover6">
+   <div class="episodes-card-title">
+    <h3>
+     <a href="https://witanime.life/episode/world-is-dancing-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-2/">
+      الحلقة 2
+     </a>
+    </h3>
+   </div>
+   <img alt="World Is Dancing الحلقة 2" class="img-responsive" src="https://witanime.life/wp-content/uploads/2026/07/World-Is-Dancing-EP-400x243.jpg"/>
+   <a class="overlay" href="https://witanime.life/episode/world-is-dancing-%d8%a7%d9%84%d8%ad%d9%84%d9%82%d8%a9-2/">
+   </a>
+  </div>
+ </div>
+ <div class="ep-card-anime-title">
+  <h3>
+   <a href="https://witanime.life/anime/world-is-dancing/">
+    World Is Dancing
+   </a>
+  </h3>
+ </div>
+</div>

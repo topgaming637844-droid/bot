@@ -58,8 +58,9 @@ def ensure_playwright_browsers():
     """Runs playwright install chromium if the browser executable is missing."""
     import subprocess
     
-    # Force the writable directory for Playwright
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/playwright-browsers"
+    # Force the writable directory for Playwright on Linux/production
+    if os.name != "nt":
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/playwright-browsers"
     
     def run_install():
         try:

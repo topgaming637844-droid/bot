@@ -436,13 +436,29 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
     results = []
     try:
         if CURL_CFFI_AVAILABLE and CurlAsyncSession:
-            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                results = await _run_scraper_search(session, title, search_queries)
+            try:
+                proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                    results = await _run_scraper_search(session, title, search_queries)
+            except Exception as e:
+                if config.PROXY_URL:
+                    logger.warning(f"WitAnime search with proxy failed: {e}. Retrying without proxy...")
+                    async with CurlAsyncSession(impersonate="chrome120") as session:
+                        results = await _run_scraper_search(session, title, search_queries)
+                else:
+                    raise
         else:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-                results = await _run_scraper_search(session, title, search_queries)
+            try:
+                connector = get_connector()
+                async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+                    results = await _run_scraper_search(session, title, search_queries)
+            except Exception as e:
+                if connector:
+                    logger.warning(f"WitAnime search with aiohttp proxy failed: {e}. Retrying without proxy...")
+                    async with aiohttp.ClientSession(cookie_jar=get_global_cookie_jar()) as session:
+                        results = await _run_scraper_search(session, title, search_queries)
+                else:
+                    raise
     except Exception as e:
         logger.warning(f"WitAnime search failed: {e}")
 
@@ -487,14 +503,33 @@ async def search_anime_scraper(title: str) -> List[Dict[str, Any]]:
             f"?search_param=animes&s={quote(fallback_q)}",
             f"?s={quote(fallback_q)}"
         ]
-        if CURL_CFFI_AVAILABLE and CurlAsyncSession:
-            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                results = await _run_scraper_search(session, fallback_q, sq)
-        else:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-                results = await _run_scraper_search(session, fallback_q, sq)
+        try:
+            if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+                try:
+                    proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                    async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                        results = await _run_scraper_search(session, fallback_q, sq)
+                except Exception as e:
+                    if config.PROXY_URL:
+                        logger.warning(f"Fallback search with proxy failed: {e}. Retrying without proxy...")
+                        async with CurlAsyncSession(impersonate="chrome120") as session:
+                            results = await _run_scraper_search(session, fallback_q, sq)
+                    else:
+                        raise
+            else:
+                try:
+                    connector = get_connector()
+                    async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+                        results = await _run_scraper_search(session, fallback_q, sq)
+                except Exception as e:
+                    if connector:
+                        logger.warning(f"Fallback search with aiohttp proxy failed: {e}. Retrying without proxy...")
+                        async with aiohttp.ClientSession(cookie_jar=get_global_cookie_jar()) as session:
+                            results = await _run_scraper_search(session, fallback_q, sq)
+                    else:
+                        raise
+        except Exception as err:
+            logger.warning(f"Fallback search query '{fallback_q}' failed: {err}")
         if results:
             logger.info(f"Fallback search matched for query '{fallback_q}': resolved {len(results)} results.")
             break
@@ -626,13 +661,29 @@ async def get_episodes_scraper(anime_slug: str) -> Dict[str, Any]:
     try:
         if CURL_CFFI_AVAILABLE and CurlAsyncSession:
             logger.info("Using curl_cffi for get_episodes_scraper")
-            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                res = await _run_get_episodes(session, anime_slug)
+            try:
+                proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                    res = await _run_get_episodes(session, anime_slug)
+            except Exception as e:
+                if config.PROXY_URL:
+                    logger.warning(f"get_episodes with proxy failed: {e}. Retrying without proxy...")
+                    async with CurlAsyncSession(impersonate="chrome120") as session:
+                        res = await _run_get_episodes(session, anime_slug)
+                else:
+                    raise
         else:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-                res = await _run_get_episodes(session, anime_slug)
+            try:
+                connector = get_connector()
+                async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+                    res = await _run_get_episodes(session, anime_slug)
+            except Exception as e:
+                if connector:
+                    logger.warning(f"get_episodes with aiohttp proxy failed: {e}. Retrying without proxy...")
+                    async with aiohttp.ClientSession(cookie_jar=get_global_cookie_jar()) as session:
+                        res = await _run_get_episodes(session, anime_slug)
+                else:
+                    raise
         
         if res and res.get("episodes"):
             return res
@@ -660,14 +711,34 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
     # 2. WitAnime URL handler
     if "witanime" in play_url:
         logger.info(f"Detected WitAnime URL, using WitAnime download handler.")
-        if CURL_CFFI_AVAILABLE and CurlAsyncSession:
-            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                return await _run_get_download_links(session, play_url)
-        else:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-                return await _run_get_download_links(session, play_url)
+        try:
+            if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+                try:
+                    proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                    async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                        return await _run_get_download_links(session, play_url)
+                except Exception as e:
+                    if config.PROXY_URL:
+                        logger.warning(f"get_download_links with proxy failed: {e}. Retrying without proxy...")
+                        async with CurlAsyncSession(impersonate="chrome120") as session:
+                            return await _run_get_download_links(session, play_url)
+                    else:
+                        raise
+            else:
+                try:
+                    connector = get_connector()
+                    async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+                        return await _run_get_download_links(session, play_url)
+                except Exception as e:
+                    if connector:
+                        logger.warning(f"get_download_links with aiohttp proxy failed: {e}. Retrying without proxy...")
+                        async with aiohttp.ClientSession(cookie_jar=get_global_cookie_jar()) as session:
+                            return await _run_get_download_links(session, play_url)
+                    else:
+                        raise
+        except Exception as err:
+            logger.warning(f"WitAnime download links fetch failed for {play_url}: {err}")
+            return {}
 
     logger.warning(f"Unknown URL domain for download links: {play_url}")
     return {}
@@ -1254,14 +1325,34 @@ async def get_download_links_scraper(play_url: str) -> Dict[str, str]:
     # 2. WitAnime URL handler
     if "witanime" in play_url:
         logger.info(f"Detected WitAnime URL, using WitAnime download handler.")
-        if CURL_CFFI_AVAILABLE and CurlAsyncSession:
-            proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-            async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                return await _run_get_download_links(session, play_url)
-        else:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
-                return await _run_get_download_links(session, play_url)
+        try:
+            if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+                try:
+                    proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                    async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                        return await _run_get_download_links(session, play_url)
+                except Exception as e:
+                    if config.PROXY_URL:
+                        logger.warning(f"fetch_episode_links with proxy failed: {e}. Retrying without proxy...")
+                        async with CurlAsyncSession(impersonate="chrome120") as session:
+                            return await _run_get_download_links(session, play_url)
+                    else:
+                        raise
+            else:
+                try:
+                    connector = get_connector()
+                    async with aiohttp.ClientSession(connector=connector, cookie_jar=get_global_cookie_jar()) as session:
+                        return await _run_get_download_links(session, play_url)
+                except Exception as e:
+                    if connector:
+                        logger.warning(f"fetch_episode_links with aiohttp proxy failed: {e}. Retrying without proxy...")
+                        async with aiohttp.ClientSession(cookie_jar=get_global_cookie_jar()) as session:
+                            return await _run_get_download_links(session, play_url)
+                    else:
+                        raise
+        except Exception as err:
+            logger.warning(f"WitAnime download links fetch failed for {play_url}: {err}")
+            return {}
 
     logger.warning(f"Unknown URL domain for download links: {play_url}")
     return {}
@@ -1939,20 +2030,38 @@ async def fetch_latest_site_episodes() -> List[Dict[str, Any]]:
     
     # Try all domains in WITANIME_DOMAINS list
     for domain in WITANIME_DOMAINS:
-        url = f"https://{domain}/latest-episodes/"
+        url = f"https://{domain}/"
         results = []
         try:
             html_text = ""
             if CURL_CFFI_AVAILABLE and CurlAsyncSession:
-                proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
-                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                    resp = await session.get(url, headers=headers, timeout=12)
-                    html_text = resp.text if resp.status_code == 200 else ""
+                try:
+                    proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if config.PROXY_URL else None
+                    async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                        resp = await session.get(url, headers=headers, timeout=12)
+                        html_text = resp.text if resp.status_code == 200 else ""
+                except Exception as proxy_err:
+                    if config.PROXY_URL:
+                        logger.warning(f"Error fetching latest releases from {domain} with proxy: {proxy_err}. Retrying without proxy...")
+                        async with CurlAsyncSession(impersonate="chrome120") as session:
+                            resp = await session.get(url, headers=headers, timeout=12)
+                            html_text = resp.text if resp.status_code == 200 else ""
+                    else:
+                        raise
             else:
-                connector = get_connector()
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(url, headers=headers, timeout=12) as resp:
-                        html_text = await resp.text() if resp.status == 200 else ""
+                try:
+                    connector = get_connector()
+                    async with aiohttp.ClientSession(connector=connector) as session:
+                        async with session.get(url, headers=headers, timeout=12) as resp:
+                            html_text = await resp.text() if resp.status == 200 else ""
+                except Exception as proxy_err:
+                    if connector:
+                        logger.warning(f"Error fetching latest releases from {domain} with aiohttp proxy: {proxy_err}. Retrying without proxy...")
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(url, headers=headers, timeout=12) as resp:
+                                html_text = await resp.text() if resp.status == 200 else ""
+                    else:
+                        raise
                             
             if not html_text or "403 Forbidden" in html_text or "Cloudflare" in html_text:
                 logger.warning(f"Domain {domain} returned 403 Forbidden or Cloudflare page for direct latest release scrape. Trying Playwright fallback...")
@@ -1963,7 +2072,9 @@ async def fetch_latest_site_episodes() -> List[Dict[str, Any]]:
                 continue
                 
             soup = BeautifulSoup(html_text, "html.parser")
-            items = soup.select(".anime-card-container, .episodes-card-container, div.anime-card-post, div.epcontent div.epcard")
+            items = soup.select(".episodes-card-container, div.epcontent div.epcard")
+            if not items:
+                items = soup.select(".anime-card-container, div.anime-card-post")
             if not items:
                 items = soup.select("div.content div.anime-card-details")
                 
@@ -1978,13 +2089,25 @@ async def fetch_latest_site_episodes() -> List[Dict[str, Any]]:
                 img_tag = item.select_one("img")
                 poster_url = img_tag.get("src") or img_tag.get("data-src") if img_tag else None
                 
-                if "الحلقة" in raw_title:
-                    parts = raw_title.split("الحلقة")
-                    anime_name = parts[0].strip(" -").strip()
-                    ep_num = parts[1].strip(" -").strip()
+                # Try to get anime title and episode num from episodes-card-container structure first
+                anime_title_tag = item.select_one(".ep-card-anime-title a, .ep-card-anime-title h3, .anime-card-title")
+                ep_title_tag = item.select_one(".episodes-card-title a, .episodes-card-title h3, .epcard-title")
+                
+                if anime_title_tag and ep_title_tag:
+                    anime_name = anime_title_tag.text.strip()
+                    raw_ep = ep_title_tag.text.strip()
+                    ep_match = re.search(r"\d+", raw_ep)
+                    ep_num = ep_match.group(0) if ep_match else "1"
                 else:
-                    anime_name = raw_title
-                    ep_num = "1"
+                    if "الحلقة" in raw_title:
+                        parts = raw_title.split("الحلقة")
+                        anime_name = parts[0].strip(" -").strip()
+                        ep_num = parts[1].strip(" -").strip()
+                        if not anime_name and anime_title_tag:
+                            anime_name = anime_title_tag.text.strip()
+                    else:
+                        anime_name = raw_title
+                        ep_num = "1"
                     
                 results.append({
                     "anime_title": anime_name,

@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Enforce a fixed writeable directory for Playwright browser binaries
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/playwright-browsers"
+# Enforce a fixed writeable directory for Playwright browser binaries on Linux/production
+if os.name != "nt":
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/playwright-browsers"
 
 
 class Config:
@@ -20,7 +21,7 @@ class Config:
     
     # Latest Release Notifier Toggle
     ENABLE_LATEST_NOTIFIER = os.getenv("ENABLE_LATEST_NOTIFIER", "True").strip().lower() in ("true", "1", "yes", "on")
-    NOTIFICATION_DELAY_MINUTES = int(os.getenv("NOTIFICATION_DELAY_MINUTES", "120").strip())
+    NOTIFICATION_DELAY_MINUTES = int(os.getenv("NOTIFICATION_DELAY_MINUTES", "5").strip())
 
     # Parse MOCK_MODE boolean
     mock_mode_str = os.getenv("MOCK_MODE", "True").strip().lower()
