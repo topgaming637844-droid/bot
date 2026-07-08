@@ -15,8 +15,8 @@ RUN playwright install chromium && playwright install-deps chromium
 # Copy the rest of the application files
 COPY . .
 
-# Expose port
+# Expose port (Railway injects $PORT at runtime)
 EXPOSE 8080
 
-# Run the application
+# Run the application (python reads PORT env var internally)
 CMD ["python", "main.py"]
