@@ -816,9 +816,22 @@ async def process_db_import(message: Message, state: FSMContext, db_session: Asy
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
             tmp_path = tmp_file.name
 
-        bot = message.bot
-        # Use bot.download() which works with both official and local Telegram Bot API servers
-        await bot.download(doc, destination=tmp_path)
+        import aiohttp
+        from config import config as _bot_cfg
+
+        # Download via official Telegram API (bypasses local Bot API which gives 404 for uploaded files)
+        official_get_file_url = f"https://api.telegram.org/bot{_bot_cfg.BOT_TOKEN}/getFile?file_id={doc.file_id}"
+        async with aiohttp.ClientSession() as _session:
+            async with _session.get(official_get_file_url) as _resp:
+                _data = await _resp.json()
+                if not _data.get("ok"):
+                    raise Exception(f"getFile failed: {_data}")
+                _file_path = _data["result"]["file_path"]
+            download_url = f"https://api.telegram.org/file/bot{_bot_cfg.BOT_TOKEN}/{_file_path}"
+            async with _session.get(download_url) as _resp:
+                _resp.raise_for_status()
+                with open(tmp_path, "wb") as _f:
+                    _f.write(await _resp.read())
 
         # Tables and their unique conflict columns
         # Strategy: INSERT OR IGNORE (skip if unique constraint violated)
