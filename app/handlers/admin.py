@@ -817,8 +817,8 @@ async def process_db_import(message: Message, state: FSMContext, db_session: Asy
             tmp_path = tmp_file.name
 
         bot = message.bot
-        file_info = await bot.get_file(doc.file_id)
-        await bot.download_file(file_info.file_path, destination=tmp_path)
+        # Use bot.download() which works with both official and local Telegram Bot API servers
+        await bot.download(doc, destination=tmp_path)
 
         # Tables and their unique conflict columns
         # Strategy: INSERT OR IGNORE (skip if unique constraint violated)
