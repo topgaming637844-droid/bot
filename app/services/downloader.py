@@ -102,20 +102,21 @@ async def get_url_file_size(url: str, session: aiohttp.ClientSession) -> int:
                     lines = text.splitlines()
                     
                     playlist_url = url
-                    for line in lines:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            playlist_url = urljoin(url, line)
-                            break
-                            
-                    if playlist_url != url:
-                        async with session.get(playlist_url, headers=headers, ssl=False, timeout=10) as sub_resp:
-                            if sub_resp.status == 200:
-                                sub_data = await sub_resp.read()
-                                if sub_data.startswith(b"\x89PNG"):
-                                    sub_data = sub_data[252:]
-                                text = sub_data.decode("utf-8", errors="ignore")
-                                lines = text.splitlines()
+                    if "#EXTINF" not in text:
+                        for line in lines:
+                            line = line.strip()
+                            if line and not line.startswith("#"):
+                                playlist_url = urljoin(url, line)
+                                break
+                                
+                        if playlist_url != url:
+                            async with session.get(playlist_url, headers=headers, ssl=False, timeout=10) as sub_resp:
+                                if sub_resp.status == 200:
+                                    sub_data = await sub_resp.read()
+                                    if sub_data.startswith(b"\x89PNG"):
+                                        sub_data = sub_data[252:]
+                                    text = sub_data.decode("utf-8", errors="ignore")
+                                    lines = text.splitlines()
                             
                     segment_urls = [urljoin(playlist_url, l.strip()) for l in lines if l.strip() and not l.startswith("#")]
                     if segment_urls:

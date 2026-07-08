@@ -1484,3 +1484,6 @@ Call log:
 [2026-07-07 13:17:34] [WARNING] [bot] [scraper.py:2122]: Error fetching latest site episodes from witanime.pics: Failed to perform, curl: (6) Could not resolve host: witanime.xyz. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.
 [2026-07-07 13:17:34] [WARNING] [bot] [scraper.py:2045]: Error fetching latest releases from witanime.life with proxy: Failed to perform, curl: (97) User was rejected by the SOCKS5 server (1 1).. See https://curl.se/libcurl/c/libcurl-errors.html first for more details.. Retrying without proxy...
 [2026-07-07 13:17:35] [INFO] [bot] [scraper.py:2119]: Fetched 15 latest released episodes from witanime.life
+[2026-07-09 00:18:33] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-09 00:27:59] [INFO] [bot] [logging_config.py:47]: Centralized logging system initialized.
+[2026-07-09 00:28:00] [INFO] [bot] [downloader.py:132]: HLS exact size: 1 segments * 1000 bytes = 0.00 MB

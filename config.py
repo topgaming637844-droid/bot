@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Add workspace bin to PATH to locate ffmpeg and ffprobe
+bin_dir = Path(__file__).parent / "bin"
+if bin_dir.exists():
+    os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+
 # Load environment variables from .env file
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
