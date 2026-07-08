@@ -23,3 +23,7 @@ test_video.mp4
 test_video_new.mp4
 test_bot.db
 scratch/test_yourupload.py
+
+# Push script (contains sensitive token - do not upload)
+push.bat
+token.txt
