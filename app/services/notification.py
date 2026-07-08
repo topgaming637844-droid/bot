@@ -57,11 +57,16 @@ async def broadcast_new_episode_notification(
             [InlineKeyboardButton(text="📢 قناة البوت الرسمية", url=chan_url)]
         ])
         
-        # Fallback to a high-quality default anime poster if no image is available
-        DEFAULT_POSTER_URL = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop"
-        final_image = image_url if (image_url and image_url.startswith("http")) else DEFAULT_POSTER_URL
-        
-        photo = URLInputFile(final_image)
+        # Check for custom ads poster configured by the admin
+        custom_poster = await get_setting("ads_poster_file_id")
+        if custom_poster:
+            photo = custom_poster
+        else:
+            # Fallback to a high-quality default anime poster if no image is available
+            DEFAULT_POSTER_URL = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop"
+            final_image = image_url if (image_url and image_url.startswith("http")) else DEFAULT_POSTER_URL
+            photo = URLInputFile(final_image)
+            
         await bot.send_photo(
             chat_id=chat_id,
             photo=photo,
@@ -213,3 +218,120 @@ async def start_latest_episodes_notifier_loop(bot: Bot, db_session_factory):
             
         # Wait 3 minutes before checking site again
         await asyncio.sleep(180)
+
+
+async def get_database_backup_file(target_path) -> bool:
+    """Generates a portable SQLite database file backup from active database (SQLite or PostgreSQL)."""
+    from pathlib import Path
+    import shutil
+    from sqlalchemy import select, insert
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from app.database.connection import AsyncSessionLocal
+    from app.database.models import Base
+    
+    db_url = config.DATABASE_URL
+    target_path = Path(target_path)
+    
+    if "postgresql" not in db_url:
+        # SQLite backup: Copy database file directly
+        db_file_name = "bot.db"
+        if "sqlite" in db_url:
+            db_file_name = db_url.split("///")[-1]
+            
+        project_root = Path(r"c:\Users\monsm\OneDrive\Desktop\BOT")
+        db_path = Path(db_file_name)
+        if not db_path.is_absolute():
+            db_path = project_root / db_path
+            
+        if db_path.exists():
+            shutil.copy2(db_path, target_path)
+            return True
+        return False
+    else:
+        # PostgreSQL backup: Dump all tables to local SQLite target_path dynamically
+        try:
+            if target_path.exists():
+                target_path.unlink()
+                
+            temp_sqlite_url = f"sqlite+aiosqlite:///{target_path}"
+            temp_engine = create_async_engine(temp_sqlite_url)
+            
+            async with temp_engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                
+            async with AsyncSessionLocal() as session:
+                for mapper in Base.registry.mappers:
+                    model_class = mapper.class_
+                    columns = mapper.columns.keys()
+                    
+                    stmt = select(model_class)
+                    res = await session.execute(stmt)
+                    records = res.scalars().all()
+                    
+                    if records:
+                        async with temp_engine.begin() as temp_conn:
+                            for record in records:
+                                data = {c: getattr(record, c) for c in columns}
+                                await temp_conn.execute(insert(model_class).values(data))
+                                
+            await temp_engine.dispose()
+            return True
+        except Exception as e:
+            logger.exception(f"Error copying database records to local SQLite: {e}")
+            if target_path.exists():
+                try: target_path.unlink()
+                except Exception: pass
+            return False
+
+
+async def start_daily_database_backup_loop(bot: Bot):
+    """Background loop that automatically sends database backups once every 24 hours to the Super Admin."""
+    from pathlib import Path
+    from aiogram.types import FSInputFile
+    
+    logger.info("Starting daily database backup loop...")
+    while True:
+        try:
+            last_backup_str = await get_setting("last_db_backup_time", None)
+            now = datetime.now(timezone.utc)
+            
+            should_backup = False
+            if not last_backup_str:
+                should_backup = True
+            else:
+                try:
+                    last_backup = datetime.fromisoformat(last_backup_str)
+                    elapsed = (now - last_backup).total_seconds()
+                    # 24 hours = 86400 seconds
+                    if elapsed >= 86400:
+                        should_backup = True
+                    else:
+                        remaining = max(60, 86400 - elapsed)
+                        logger.info(f"Daily database backup is not due yet. Remaining sleep time: {remaining:.1f} seconds")
+                        await asyncio.sleep(remaining)
+                        continue
+                except Exception:
+                    should_backup = True
+                    
+            if should_backup:
+                temp_backup_path = config.DOWNLOAD_DIR / "daily_backup.db"
+                success = await get_database_backup_file(temp_backup_path)
+                
+                if success and temp_backup_path.exists():
+                    logger.info(f"Sending automated daily database backup to Super Admin ({config.SUPER_ADMIN_ID})...")
+                    db_doc = FSInputFile(str(temp_backup_path), filename="bot_backup.db")
+                    await bot.send_document(
+                        chat_id=config.SUPER_ADMIN_ID,
+                        document=db_doc,
+                        caption=f"🤖 <b>نسخة احتياطية تلقائية لقاعدة البيانات (Daily Backup)</b>\n\n📅 التاريخ: <code>{now.strftime('%Y-%m-%d %H:%M:%S')} UTC</code>"
+                    )
+                    await set_setting("last_db_backup_time", now.isoformat())
+                    logger.info("Daily database backup successfully sent.")
+                    try: temp_backup_path.unlink()
+                    except Exception: pass
+                else:
+                    logger.warning("Could not generate database backup file.")
+        except Exception as e:
+            logger.warning(f"Error in daily database backup loop: {e}")
+            
+        await asyncio.sleep(3600)

@@ -22,6 +22,7 @@ class AdminStates(StatesGroup):
     waiting_for_custom_button_response_text = State()
     waiting_for_static_msg_text = State()
     waiting_for_notif_group_id = State()
+    waiting_for_ads_poster = State()
 
 router = Router(name="admin")
 
@@ -752,6 +753,7 @@ async def handle_admin_content(callback: CallbackQuery, db_session: AsyncSession
         f"<code>/post_episode اسم الأنمي | رقم الحلقة</code>"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💾 تصدير قاعدة البيانات (bot.db)", callback_data="admin_export_db")],
         [InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")]
     ])
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
@@ -764,15 +766,26 @@ async def handle_admin_settings(callback: CallbackQuery, db_session: AsyncSessio
         return
     await safe_answer(callback)
     
+    from app.utils.settings import get_setting
+    ads_poster = await get_setting("ads_poster_file_id")
+    poster_status = "✅ <b>مفعل (معرف تلغرام)</b>" if ads_poster else "❌ <b>غير معين (الافتراضي)</b>"
+    
     text = (
         "⚙️ <b>إعدادات البوت والتحكم</b>\n\n"
         "• لتغيير الخلفية/الصورة المصغرة الافتراضية للفيديوهات، أرسل الصورة كرسالة مباشرة للبوت أو استخدم الأمر:\n"
-        "<code>/setthumb رابط_الصورة_المباشر</code>"
+        "<code>/setthumb رابط_الصورة_المباشر</code>\n\n"
+        f"📢 <b>بوستر الإعلانات الحالي:</b> {poster_status}"
     )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖼️ تغيير الخلفية الآن", callback_data="admin_set_bg")],
-        [InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")]
-    ])
+    
+    buttons = [
+        [InlineKeyboardButton(text="🖼️ تغيير خلفية الفيديو", callback_data="admin_set_bg")],
+        [InlineKeyboardButton(text="📢 تعيين بوستر الإعلانات", callback_data="admin_set_ads_poster")]
+    ]
+    if ads_poster:
+        buttons.append([InlineKeyboardButton(text="🗑️ مسح بوستر الإعلانات", callback_data="admin_delete_ads_poster")])
+    buttons.append([InlineKeyboardButton(text="🔙 رجوع للوحة التحكم", callback_data="admin_home")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "admin_support")
@@ -1635,3 +1648,99 @@ async def process_admin_notif_group(message: Message, state: FSMContext, db_sess
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+@router.callback_query(F.data == "admin_set_ads_poster")
+async def handle_admin_set_ads_poster(callback: CallbackQuery, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await safe_answer(callback)
+    await state.set_state(AdminStates.waiting_for_ads_poster)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="admin_settings")]
+    ])
+    
+    await callback.message.edit_text(
+        "📢 <b>تعيين بوستر الإعلانات:</b>\n\n"
+        "يرجى إرسال الصورة مباشرة في هذه المحادثة كملف صورة عادي ليتم اعتمادها كبوستر افتراضي للإعلانات والإشعارات الجديدة.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "admin_delete_ads_poster")
+async def handle_admin_delete_ads_poster(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    from app.utils.settings import delete_setting
+    await delete_setting("ads_poster_file_id")
+    await safe_answer(callback, "✅ تم حذف بوستر الإعلانات بنجاح.", show_alert=True)
+    await handle_admin_settings(callback, db_session)
+
+@router.message(AdminStates.waiting_for_ads_poster, F.photo)
+async def process_admin_ads_poster(message: Message, db_session: AsyncSession, state: FSMContext):
+    authorized = await is_admin(message.from_user.id, db_session)
+    if not authorized:
+        return
+        
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    
+    status_msg = await message.answer("🔄 جاري حفظ بوستر الإعلانات في قاعدة البيانات...")
+    
+    try:
+        from app.utils.settings import set_setting
+        await set_setting("ads_poster_file_id", file_id)
+        
+        await status_msg.edit_text("✅ تم تحديث بوستر الإعلانات بنجاح!")
+        await state.clear()
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ العودة للإعدادات", callback_data="admin_settings")]
+        ])
+        await message.answer("⚙️ يمكنك العودة إلى الإعدادات الآن:", reply_markup=keyboard)
+    except Exception as e:
+        logger.exception("Error processing ads poster photo")
+        import html
+        await status_msg.edit_text(f"❌ فشل تحديث الصورة: {html.escape(str(e))}")
+
+@router.callback_query(F.data == "admin_export_db")
+async def handle_admin_export_db(callback: CallbackQuery, db_session: AsyncSession):
+    authorized = await is_admin(callback.from_user.id, db_session)
+    if not authorized:
+        await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
+        return
+        
+    await safe_answer(callback)
+    status_msg = await callback.message.answer("🔄 جاري تحضير وتصدير قاعدة البيانات...")
+    
+    try:
+        from aiogram.types import FSInputFile
+        db_url = config.DATABASE_URL
+        db_file_name = "bot.db"
+        if "sqlite" in db_url:
+            db_file_name = db_url.split("///")[-1]
+            
+        project_root = Path(r"c:\Users\monsm\OneDrive\Desktop\BOT")
+        db_path = Path(db_file_name)
+        if not db_path.is_absolute():
+            db_path = project_root / db_path
+            
+        if db_path.exists() and db_path.is_file():
+            db_doc = FSInputFile(str(db_path), filename="bot.db")
+            await callback.message.bot.send_document(
+                chat_id=callback.from_user.id,
+                document=db_doc,
+                caption="💾 <b>قاعدة بيانات البوت كاملة (bot.db)</b>"
+            )
+            await status_msg.delete()
+        else:
+            await status_msg.edit_text(f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار: {db_path}")
+    except Exception as e:
+        logger.exception("Error exporting database")
+        await status_msg.edit_text(f"❌ فشل تصدير قاعدة البيانات: {e}")

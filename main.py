@@ -183,6 +183,8 @@ async def lifespan(app: FastAPI):
     safe_create_task(task_consumer_worker(bot, AsyncSessionLocal), name="consumer_worker_task")
     from app.services.notification import start_latest_episodes_notifier_loop
     safe_create_task(start_latest_episodes_notifier_loop(bot, AsyncSessionLocal), name="notifier_loop_task")
+    from app.services.notification import start_daily_database_backup_loop
+    safe_create_task(start_daily_database_backup_loop(bot), name="db_backup_loop_task")
 
     yield
 
