@@ -833,51 +833,49 @@ async def process_db_import(message: Message, state: FSMContext, db_session: Asy
                 with open(tmp_path, "wb") as _f:
                     _f.write(await _resp.read())
 
-        # Tables and their unique conflict columns
-        # Strategy: INSERT OR IGNORE (skip if unique constraint violated)
-        TABLES_CONFIG = {
-            "episode_cache": None,           # no unique constraint – use primary key
-            "download_cache": "play_url",    # unique on play_url
-            "telegram_file_cache": None,     # unique on (anilist_id, ep_number, quality)
-            "search_cache": None,            # unique on (query_text, anilist_id)
-        }
+        # Tables to merge (source SQLite → destination DB via SQLAlchemy)
+        TABLES_CONFIG = [
+            "episode_cache",
+            "download_cache",
+            "telegram_file_cache",
+            "search_cache",
+        ]
 
-        from config import config as _cfg
-        main_db_url = _cfg.DATABASE_URL
-        main_db_path = main_db_url.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
-        if not main_db_path.startswith("/") and not (len(main_db_path) > 1 and main_db_path[1] == ":"):
-            # Relative path – resolve from project root
-            main_db_path = str(Path(main_db_path).resolve())
+        from app.database.connection import is_sqlite as _is_sqlite
+        from sqlalchemy import text
 
         stats = {}
-        # Use synchronous sqlite3 since we only need to merge, not use the async session for this
         src_conn = sqlite3.connect(tmp_path)
-        dst_conn = sqlite3.connect(main_db_path)
         src_conn.row_factory = sqlite3.Row
 
         try:
             src_cur = src_conn.cursor()
-            dst_cur = dst_conn.cursor()
 
             for table in TABLES_CONFIG:
-                # Check table exists in source
+                # Check table exists in source SQLite
                 src_cur.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
                 )
                 if not src_cur.fetchone():
-                    stats[table] = {"skipped": 0, "imported": 0, "note": "not in source"}
+                    stats[table] = {"imported": 0, "skipped": 0, "note": "not in source"}
                     continue
 
-                # Get columns from source
+                # Get columns (exclude 'id' so destination auto-increments)
                 src_cur.execute(f"PRAGMA table_info({table})")
-                cols_info = src_cur.fetchall()
-                cols = [c[1] for c in cols_info]  # column names
-                # Exclude 'id' primary key from insert so destination auto-increments
-                insert_cols = [c for c in cols if c != "id"]
+                cols = [c[1] for c in src_cur.fetchall() if c[1] != "id"]
+                cols_str = ", ".join(cols)
 
-                placeholders = ", ".join(["?"] * len(insert_cols))
-                cols_str = ", ".join(insert_cols)
-                insert_sql = f"INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({placeholders})"
+                # Build INSERT statement compatible with destination DB type
+                if _is_sqlite:
+                    named_placeholders = ", ".join([f":{c}" for c in cols])
+                    insert_sql = text(
+                        f"INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({named_placeholders})"
+                    )
+                else:
+                    named_placeholders = ", ".join([f":{c}" for c in cols])
+                    insert_sql = text(
+                        f"INSERT INTO {table} ({cols_str}) VALUES ({named_placeholders}) ON CONFLICT DO NOTHING"
+                    )
 
                 src_cur.execute(f"SELECT {cols_str} FROM {table}")
                 rows = src_cur.fetchall()
@@ -885,20 +883,22 @@ async def process_db_import(message: Message, state: FSMContext, db_session: Asy
                 imported = 0
                 skipped = 0
                 for row in rows:
+                    row_dict = dict(zip(cols, tuple(row)))
                     try:
-                        dst_cur.execute(insert_sql, tuple(row))
-                        if dst_cur.rowcount > 0:
+                        result = await db_session.execute(insert_sql, row_dict)
+                        if result.rowcount > 0:
                             imported += 1
                         else:
                             skipped += 1
-                    except sqlite3.IntegrityError:
+                    except Exception:
+                        await db_session.rollback()
                         skipped += 1
 
-                dst_conn.commit()
+                await db_session.commit()
                 stats[table] = {"imported": imported, "skipped": skipped}
+
         finally:
             src_conn.close()
-            dst_conn.close()
 
         # Format report
         table_labels = {
