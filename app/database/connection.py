@@ -72,4 +72,16 @@ async def init_db():
         await add_column_if_missing("users", "last_name", "VARCHAR(255)")
         await add_column_if_missing("users", "is_blocked", "BOOLEAN DEFAULT FALSE")
 
+        # Fix PostgreSQL sequences to match actual max IDs (prevents duplicate key errors after data import)
+        if not is_sqlite:
+            try:
+                for tbl in ["episode_cache", "download_cache", "telegram_file_cache",
+                            "search_cache", "persistent_task_queue", "users", "custom_buttons"]:
+                    await conn.execute(text(
+                        f"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), "
+                        f"COALESCE((SELECT MAX(id) FROM {tbl}), 0) + 1, false)"
+                    ))
+            except Exception as ex:
+                print(f"Info on sequence reset: {ex}")
+
     print("Database tables initialized successfully.")

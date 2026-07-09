@@ -900,6 +900,19 @@ async def process_db_import(message: Message, state: FSMContext, db_session: Asy
         finally:
             src_conn.close()
 
+        # Reset PostgreSQL sequences to avoid duplicate key errors after import
+        if not _is_sqlite:
+            try:
+                all_tables = TABLES_CONFIG + ["persistent_task_queue", "users", "custom_buttons"]
+                for tbl in all_tables:
+                    await db_session.execute(text(
+                        f"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), "
+                        f"COALESCE((SELECT MAX(id) FROM {tbl}), 0) + 1, false)"
+                    ))
+                await db_session.commit()
+            except Exception as seq_err:
+                logger.warning(f"Sequence reset warning (non-critical): {seq_err}")
+
         # Format report
         table_labels = {
             "episode_cache": "قائمة الحلقات",
