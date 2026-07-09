@@ -633,8 +633,8 @@ async def get_admin_panel_data(db_session: AsyncSession):
     )
     
     # Read status toggles from SystemSettings
-    ban_notif = await get_setting("ban_notif_enabled", "true")
-    join_notif = await get_setting("join_notif_enabled", "true")
+    ban_notif = await get_setting("ban_notif_enabled", "true", session=db_session)
+    join_notif = await get_setting("join_notif_enabled", "true", session=db_session)
     
     ban_emoji = "✅" if ban_notif == "true" else "❌"
     join_emoji = "✅" if join_notif == "true" else "❌"
@@ -966,7 +966,7 @@ async def handle_admin_settings(callback: CallbackQuery, db_session: AsyncSessio
     await safe_answer(callback)
     
     from app.utils.settings import get_setting
-    ads_poster = await get_setting("ads_poster_file_id")
+    ads_poster = await get_setting("ads_poster_file_id", session=db_session)
     poster_status = "✅ <b>مفعل (معرف تلغرام)</b>" if ads_poster else "❌ <b>غير معين (الافتراضي)</b>"
     
     text = (
@@ -1340,9 +1340,9 @@ async def handle_toggle_ban_notif(callback: CallbackQuery, db_session: AsyncSess
         return
         
     from app.utils.settings import get_setting, set_setting
-    current = await get_setting("ban_notif_enabled", "true")
+    current = await get_setting("ban_notif_enabled", "true", session=db_session)
     new_val = "false" if current == "true" else "true"
-    await set_setting("ban_notif_enabled", new_val)
+    await set_setting("ban_notif_enabled", new_val, session=db_session)
     
     await safe_answer(callback, "تم تعديل حالة إشعار الحظر بنجاح!")
     
@@ -1360,9 +1360,9 @@ async def handle_toggle_join_notif(callback: CallbackQuery, db_session: AsyncSes
         return
         
     from app.utils.settings import get_setting, set_setting
-    current = await get_setting("join_notif_enabled", "true")
+    current = await get_setting("join_notif_enabled", "true", session=db_session)
     new_val = "false" if current == "true" else "true"
-    await set_setting("join_notif_enabled", new_val)
+    await set_setting("join_notif_enabled", new_val, session=db_session)
     
     await safe_answer(callback, "تم تعديل حالة إشعار الدخول بنجاح!")
     
@@ -1561,7 +1561,7 @@ async def process_admin_broadcast(message: Message, db_session: AsyncSession, st
                 await db_session.commit()
                 
                 from app.utils.settings import get_setting
-                ban_notif = await get_setting("ban_notif_enabled", "true")
+                ban_notif = await get_setting("ban_notif_enabled", "true", session=db_session)
                 if ban_notif == "true":
                     from app.database.models import BotAdmin
                     stmt_admins = select(BotAdmin.user_id)
@@ -1794,7 +1794,7 @@ async def handle_admin_set_notif_group(callback: CallbackQuery, db_session: Asyn
         
     await safe_answer(callback)
     from app.utils.settings import get_setting
-    current_val = await get_setting("notification_group_id", "-1003876536923")
+    current_val = await get_setting("notification_group_id", "-1003876536923", session=db_session)
     
     await state.set_state(AdminStates.waiting_for_notif_group_id)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[

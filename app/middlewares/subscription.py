@@ -57,7 +57,7 @@ class SubscriptionMiddleware(BaseMiddleware):
                     # Notify admins
                     try:
                         from app.utils.settings import get_setting
-                        join_notif = await get_setting("join_notif_enabled", "true")
+                        join_notif = await get_setting("join_notif_enabled", "true", session=db_session)
                         if join_notif == "true":
                             from app.database.models import BotAdmin
                             stmt_admins = select(BotAdmin.user_id)
@@ -88,18 +88,26 @@ class SubscriptionMiddleware(BaseMiddleware):
                     existing_user.is_blocked = False
                     db_session.add(existing_user)
                     await db_session.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                from app.utils.logging_config import logger
+                logger.warning(f"Error registering/updating user in subscription middleware: {e}")
+                try:
+                    await db_session.rollback()
+                except Exception:
+                    pass
 
         # Check if force subscription is disabled via DB settings or config
         if db_session:
             try:
                 from app.utils.settings import get_setting
-                force_sub = await get_setting("force_sub_enabled", "true")
+                force_sub = await get_setting("force_sub_enabled", "true", session=db_session)
                 if force_sub == "false":
                     return await handler(event, data)
-            except Exception:
-                pass
+            except Exception as e:
+                try:
+                    await db_session.rollback()
+                except Exception:
+                    pass
 
         if not config.CHANNEL_USERNAME:
             return await handler(event, data)

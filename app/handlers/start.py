@@ -100,7 +100,7 @@ async def cmd_start(message: Message, db_session: AsyncSession, state: FSMContex
             # Send notification to admins
             try:
                 from app.utils.settings import get_setting
-                join_notif = await get_setting("join_notif_enabled", "true")
+                join_notif = await get_setting("join_notif_enabled", "true", session=db_session)
                 if join_notif == "true":
                     from app.database.models import BotAdmin
                     stmt_admins = select(BotAdmin.user_id)
@@ -382,7 +382,7 @@ async def handle_menu_favorites(callback: CallbackQuery, db_session: AsyncSessio
 async def handle_menu_support(callback: CallbackQuery, db_session: AsyncSession):
     await safe_answer(callback)
     from app.utils.settings import get_setting
-    custom_text = await get_setting("custom_msg_support", None)
+    custom_text = await get_setting("custom_msg_support", None, session=db_session)
     
     support_text = custom_text or (
         "🛠️ <b>الدعم الفني والتواصل:</b>\n\n"
@@ -401,7 +401,7 @@ async def handle_menu_support(callback: CallbackQuery, db_session: AsyncSession)
 async def handle_menu_help(callback: CallbackQuery, db_session: AsyncSession):
     await safe_answer(callback)
     from app.utils.settings import get_setting
-    custom_text = await get_setting("custom_msg_help", None)
+    custom_text = await get_setting("custom_msg_help", None, session=db_session)
     
     help_text = custom_text or (
         "ℹ️ <b>دليل وتعليمات استخدام البوت كعضو:</b>\n\n"
@@ -429,7 +429,7 @@ async def handle_menu_help(callback: CallbackQuery, db_session: AsyncSession):
 async def handle_menu_ads(callback: CallbackQuery, db_session: AsyncSession):
     await safe_answer(callback)
     from app.utils.settings import get_setting
-    custom_text = await get_setting("custom_msg_ads", None)
+    custom_text = await get_setting("custom_msg_ads", None, session=db_session)
     
     ads_text = custom_text or (
         "📢 <b>للإعلانات والتمويل والتبرع:</b>\n\n"

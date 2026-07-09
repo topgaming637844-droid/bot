@@ -44,7 +44,11 @@ class BlacklistMiddleware(BaseMiddleware):
                         except Exception:
                             pass
                     return  # Drop request, don't execute handler
-            except Exception:
+            except Exception as e:
                 logger.exception("Error checking blacklist middleware")
+                try:
+                    await db_session.rollback()
+                except Exception:
+                    pass
 
         return await handler(event, data)
