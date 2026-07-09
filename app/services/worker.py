@@ -122,7 +122,7 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
                 os.makedirs(os.path.dirname(raw_path), exist_ok=True)
                 shutil.copy2(local_file_path, raw_path)
             else:
-                # 2. Fallback to direct HTTP download from official cloud API
+                # 2. Fallback to direct HTTP download from custom local or official API
                 file_path = file_info.file_path
                 # Extract standard relative path if Bot API server is running in local mode and returns absolute disk path
                 if "/" in file_path:
@@ -131,17 +131,32 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
                             file_path = prefix + file_path.split(prefix, 1)[1]
                             break
                 
-                logger.info(f"Downloading custom thumbnail from Telegram path: {file_path}")
                 os.makedirs(os.path.dirname(raw_path), exist_ok=True)
                 
-                dl_url = f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file_path}"
+                # Determine URLs to attempt downloading from
+                dl_urls = []
+                if config.TELEGRAM_API_SERVER:
+                    dl_urls.append(f"{config.TELEGRAM_API_SERVER}/file/bot{config.BOT_TOKEN}/{file_path}")
+                dl_urls.append(f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file_path}")
+                
+                downloaded = False
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(dl_url, timeout=30) as resp:
-                        if resp.status == 200:
-                            with open(raw_path, "wb") as f:
-                                f.write(await resp.read())
-                        else:
-                            raise Exception(f"Official Telegram API returned status {resp.status}")
+                    for dl_url in dl_urls:
+                        try:
+                            logger.info(f"Downloading custom thumbnail from Telegram path: {dl_url}")
+                            async with session.get(dl_url, timeout=30) as resp:
+                                if resp.status == 200:
+                                    with open(raw_path, "wb") as f:
+                                        f.write(await resp.read())
+                                    downloaded = True
+                                    break
+                                else:
+                                    logger.warning(f"Failed download from {dl_url} status: {resp.status}")
+                        except Exception as dl_e:
+                            logger.warning(f"Error downloading from {dl_url}: {dl_e}")
+                            
+                if not downloaded:
+                    raise Exception("Failed to download custom thumbnail from all URLs")
             
             if raw_path.exists() and raw_path.stat().st_size > 0:
                 success = prepare_telegram_thumbnail(raw_path, optimized_path)

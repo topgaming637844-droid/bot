@@ -58,17 +58,23 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
         status_msg = await message.answer("🔍 جاري فحص الفهرس السحابي.. anime")
         try:
             anilist_results = await search_anilist(query)
-            await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+            try:
+                await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+            except Exception:
+                pass
             
             if not anilist_results:
                 logger.info(f"الخدمة الرئيسية لم ترجع نتائج للبحث: '{query}'. جاري الانتقال للبحث المساعد...")
                 status_msg = await message.answer("🔍 جاري توسيع نطاق البحث في قواعد البيانات...")
                 scraper_results = await search_anime_scraper(query)
-                await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+                try:
+                    await message.bot.delete_message(chat_id=message.chat.id, message_id=status_msg.message_id)
+                except Exception:
+                    pass
                 
                 if not scraper_results:
                     logger.info(f"لم ترجع نتائج للبحث: '{query}'")
-                    await message.answer("⚠️ عذراً، خادم البث يواجه ضغطاً حالياً، يرجى المحاولة لاحقاً.")
+                    await message.answer(f"⚠️ لم يتم العثور على أي نتائج للبحث عن: '{query}'\n\nيرجى التأكد من كتابة الاسم بشكل صحيح أو المحاولة بكلمات أخرى.")
                     return
                 
                 for r in scraper_results:
@@ -95,21 +101,22 @@ async def handle_anime_search(message: Message, db_session: AsyncSession, state:
             # Cache all resolved results (up to 10)
             logger.info(f"كاش جديد للبحث '{query}' يحتوي على {len(resolved_anime)} نتائج.")
             for anime in resolved_anime[:10]:
-                try:
-                    new_cache = SearchCache(
-                        query_text=query,
-                        anilist_id=anime["anilist_id"],
-                        title_english=anime["title_english"],
-                        title_romaji=anime["title_romaji"],
-                        description=anime["description"],
-                        image_url=anime["image_url"],
-                        duration=anime.get("duration")[:90] if anime.get("duration") else None,
-                        synonyms=anime.get("synonyms")
-                    )
-                    db_session.add(new_cache)
-                    await db_session.commit()
-                except Exception:
-                    await db_session.rollback()
+                new_cache = SearchCache(
+                    query_text=query,
+                    anilist_id=anime["anilist_id"],
+                    title_english=anime["title_english"],
+                    title_romaji=anime["title_romaji"],
+                    description=anime["description"],
+                    image_url=anime["image_url"],
+                    duration=anime.get("duration")[:90] if anime.get("duration") else None,
+                    synonyms=anime.get("synonyms")
+                )
+                db_session.add(new_cache)
+            try:
+                await db_session.commit()
+            except Exception as commit_err:
+                logger.warning(f"Failed to commit SearchCache items: {commit_err}")
+                await db_session.rollback()
             
         except Exception as e:
             logger.exception("خطأ أثناء معالجة البحث وتطبيع الاستعلام")
