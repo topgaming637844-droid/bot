@@ -133,27 +133,48 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
                 
                 os.makedirs(os.path.dirname(raw_path), exist_ok=True)
                 
-                # Determine URLs to attempt downloading from
-                dl_urls = []
-                if config.TELEGRAM_API_SERVER:
-                    dl_urls.append(f"{config.TELEGRAM_API_SERVER}/file/bot{config.BOT_TOKEN}/{file_path}")
-                dl_urls.append(f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{file_path}")
-                
                 downloaded = False
                 async with aiohttp.ClientSession() as session:
-                    for dl_url in dl_urls:
+                    # A. Try downloading from local Bot API server if configured
+                    if config.TELEGRAM_API_SERVER:
+                        local_dl_url = f"{config.TELEGRAM_API_SERVER}/file/bot{config.BOT_TOKEN}/{file_path}"
                         try:
-                            logger.info(f"Downloading custom thumbnail from Telegram path: {dl_url}")
-                            async with session.get(dl_url, timeout=30) as resp:
+                            logger.info(f"Attempting to download from local Bot API server: {local_dl_url}")
+                            async with session.get(local_dl_url, timeout=30) as resp:
                                 if resp.status == 200:
                                     with open(raw_path, "wb") as f:
                                         f.write(await resp.read())
                                     downloaded = True
-                                    break
                                 else:
-                                    logger.warning(f"Failed download from {dl_url} status: {resp.status}")
-                        except Exception as dl_e:
-                            logger.warning(f"Error downloading from {dl_url}: {dl_e}")
+                                    logger.warning(f"Local Bot API server download returned status: {resp.status}")
+                        except Exception as local_e:
+                            logger.warning(f"Error downloading from local Bot API server: {local_e}")
+                            
+                    # B. Fallback to official Telegram API (requires calling getFile on official API to get official cloud path)
+                    if not downloaded:
+                        try:
+                            logger.info("Resolving correct cloud path via official Telegram API...")
+                            official_get_file_url = f"https://api.telegram.org/bot{config.BOT_TOKEN}/getFile?file_id={file_id}"
+                            async with session.get(official_get_file_url, timeout=15) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    if data.get("ok"):
+                                        cloud_file_path = data["result"]["file_path"]
+                                        dl_url = f"https://api.telegram.org/file/bot{config.BOT_TOKEN}/{cloud_file_path}"
+                                        logger.info(f"Downloading custom thumbnail from official Telegram path: {dl_url}")
+                                        async with session.get(dl_url, timeout=30) as dl_resp:
+                                            if dl_resp.status == 200:
+                                                with open(raw_path, "wb") as f:
+                                                    f.write(await dl_resp.read())
+                                                downloaded = True
+                                            else:
+                                                logger.warning(f"Official download failed with status {dl_resp.status}")
+                                    else:
+                                        logger.warning(f"Official getFile returned ok=False: {data}")
+                                else:
+                                    logger.warning(f"Official getFile failed with status {resp.status}")
+                        except Exception as official_e:
+                            logger.warning(f"Error resolving/downloading from official Telegram API: {official_e}")
                             
                 if not downloaded:
                     raise Exception("Failed to download custom thumbnail from all URLs")

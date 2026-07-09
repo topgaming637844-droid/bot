@@ -1412,11 +1412,42 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
             logger.info(f"WitAnime parsing returned 0 links for {play_url}. Attempting Gogoanime fallback...")
             slug_match = re.search(r'/episode/([^/]+)/?', play_url)
             if slug_match:
-                slug = slug_match.group(1).lower()
-                gogo_links = await get_download_links_gogoanime(slug)
-                if gogo_links:
-                    logger.info(f"Gogoanime fallback successfully resolved {len(gogo_links)} links for {slug}")
-                    return gogo_links
+                import urllib.parse
+                raw_slug = slug_match.group(1)
+                slug = urllib.parse.unquote(raw_slug).lower()
+                
+                # Check for Arabic episode markers: 'الحلقة' or 'الحلقه'
+                ep_num = None
+                anime_slug = None
+                
+                # Try splitting by 'الحلقة' or 'الحلقه'
+                for marker in ["-الحلقة-", "-الحلقه-", "الحلقة-", "الحلقه-"]:
+                    if marker in slug:
+                        parts = slug.split(marker, 1)
+                        anime_slug = parts[0].strip("-")
+                        ep_num = parts[1].strip("-")
+                        break
+                
+                # Fallback if no marker found (try regex matching last number)
+                if not ep_num or not anime_slug:
+                    num_match = re.search(r'-(\d+)$', slug)
+                    if num_match:
+                        ep_num = num_match.group(1)
+                        anime_slug = slug[:num_match.start()].strip("-")
+                
+                if anime_slug and ep_num:
+                    gogo_slug = f"{anime_slug}-episode-{ep_num}"
+                    logger.info(f"Constructed Gogoanime fallback slug: {gogo_slug} (from: {slug})")
+                    gogo_links = await get_download_links_gogoanime(gogo_slug)
+                    if gogo_links:
+                        logger.info(f"Gogoanime fallback successfully resolved {len(gogo_links)} links for {gogo_slug}")
+                        return gogo_links
+                else:
+                    logger.warning(f"Could not parse anime slug and episode number from: {slug}. Trying raw slug fallback...")
+                    gogo_links = await get_download_links_gogoanime(slug)
+                    if gogo_links:
+                        logger.info(f"Gogoanime fallback successfully resolved {len(gogo_links)} links for raw slug {slug}")
+                        return gogo_links
         except Exception as fallback_err:
             logger.warning(f"Gogoanime fallback failed for {play_url}: {fallback_err}")
 
@@ -1489,9 +1520,10 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                             resolved_links[q_name] = m3u8_master
 
                         # Early break optimization for direct high-quality streaming URLs (archive.org or validated .mp4)
+                        # Exclude yourupload, vidcache, and mp4upload as they are often broken, empty (0 bytes), or extremely slow
                         has_high_quality_direct = False
                         for q_val in resolved_links.values():
-                            if "archive.org" in q_val or ".mp4" in q_val or ".mkv" in q_val:
+                            if ("archive.org" in q_val or ".mp4" in q_val or ".mkv" in q_val) and not any(x in q_val.lower() for x in ["yourupload", "vidcache", "mp4upload"]):
                                 has_high_quality_direct = True
                                 break
                         if has_high_quality_direct:
