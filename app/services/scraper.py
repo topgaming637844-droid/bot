@@ -9,13 +9,10 @@ from urllib.parse import quote, urljoin
 
 WITANIME_DOMAIN = "witanime.pics"
 GOGOANIME_DOMAINS = [
-    "gogoanime3.cc",
-    "gogoanime.bz",
-    "gogoanime.ar",
-    "gogoanime3.co",
-    "gogoanime.gg",
-    "gogoanime.ru",
-    "gogoanime.ws"
+    "gogoanime.by",
+    "anitaku.pe",
+    "anitaku.so",
+    "gogoanime.film",
 ]
 from config import config
 from app.utils.user_agents import get_random_user_agent
@@ -1666,38 +1663,37 @@ async def try_fetch_anime_page_with_fallbacks(session: Any, anime_slug: str) -> 
 # ======================== GOGOANIME SCRAPER ========================
 # ======================== GOGOANIME SCRAPER ========================
 GOGOANIME_DOMAINS = [
-    "gogoanime3.cc",
-    "gogoanime.bz",
-    "gogoanime.ar",
-    "gogoanime.tel",
-    "gogoanime3.co",
-    "gogoanime.ws"
+    "gogoanime.by",
+    "anitaku.pe",
+    "anitaku.so",
+    "gogoanime.film",
 ]
 
 async def search_anime_gogoanime(title: str) -> List[Dict[str, Any]]:
+    """Searches Gogoanime using fast HTTP requests only (no Playwright). Timeout 3s per domain."""
     logger.info(f"Searching Gogoanime for query: '{title}' across domains: {GOGOANIME_DOMAINS}")
     for domain in GOGOANIME_DOMAINS:
         search_url = f"https://{domain}/search.html?keyword={quote(title)}"
         logger.info(f"Trying Gogoanime search on domain: {domain}")
         html = None
         try:
-            connector = get_connector()
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(search_url, headers=get_browser_headers(search_url), timeout=4) as resp:
-                    if resp.status == 200:
-                        html = await resp.text()
+            if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+                async with CurlAsyncSession(impersonate="chrome120") as session:
+                    resp = await session.get(search_url, headers=get_browser_headers(search_url), timeout=3)
+                    if resp.status_code == 200:
+                        html = resp.text
                     else:
-                        logger.warning(f"Gogoanime domain {domain} returned HTTP {resp.status}")
+                        logger.warning(f"Gogoanime domain {domain} returned HTTP {resp.status_code}")
+            else:
+                connector = get_connector()
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(search_url, headers=get_browser_headers(search_url), timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                        if resp.status == 200:
+                            html = await resp.text()
+                        else:
+                            logger.warning(f"Gogoanime domain {domain} returned HTTP {resp.status}")
         except Exception as e:
-            logger.warning(f"Gogoanime direct search failed on {domain}: {e}")
-
-        # Playwright fallback if direct connection fails or is blocked
-        if not html:
-            logger.info(f"Trying Playwright fallback for Gogoanime search on {domain}...")
-            try:
-                html = await get_html_headless(search_url)
-            except Exception as e:
-                logger.warning(f"Playwright fallback search failed on {domain}: {e}")
+            logger.warning(f"Gogoanime search failed on {domain}: {e}")
 
         if html:
             try:
@@ -1877,6 +1873,24 @@ async def resolve_anime_slug_scraper(
             if cleaned_syn and len(cleaned_syn) > 2 and cleaned_syn not in [q[0] for q in queries_to_try]:
                 queries_to_try.append((cleaned_syn, syn))
 
+    # === تقسيم ذكي للعناوين الطويلة (أكثر من 4 كلمات) ===
+    # أول 3-4 كلمات من العنوان بتكون كافية للبحث في أغلب الحالات
+    short_prefix_queries = []
+    for cleaned_q, orig_q in list(queries_to_try):
+        words = cleaned_q.split()
+        if len(words) > 4:
+            # أول 4 كلمات
+            prefix_4 = " ".join(words[:4])
+            if prefix_4 not in [q[0] for q in queries_to_try] and prefix_4 not in [q[0] for q in short_prefix_queries]:
+                short_prefix_queries.append((prefix_4, orig_q))
+            # أول 3 كلمات
+            prefix_3 = " ".join(words[:3])
+            if prefix_3 not in [q[0] for q in queries_to_try] and prefix_3 not in [q[0] for q in short_prefix_queries]:
+                short_prefix_queries.append((prefix_3, orig_q))
+            # الكلمة الأولى فقط (آخر محاولة)
+            if len(words[0]) > 3 and words[0] not in [q[0] for q in queries_to_try] and words[0] not in [q[0] for q in short_prefix_queries]:
+                short_prefix_queries.append((words[0], orig_q))
+
     split_queries = []
     titles_to_split = []
     if title_romaji:
@@ -1895,6 +1909,7 @@ async def resolve_anime_slug_scraper(
                         if cleaned_part not in [q[0] for q in queries_to_try] and cleaned_part not in [s[0] for s in split_queries]:
                             split_queries.append((cleaned_part, part))
 
+    # === المرحلة 1: البحث بالعنوان الكامل ===
     for cleaned_query, orig_query in queries_to_try:
         logger.info(f"Searching WitAnime for: {cleaned_query} (original: {orig_query})")
         results = await search_anime_scraper(cleaned_query)
@@ -1904,6 +1919,32 @@ async def resolve_anime_slug_scraper(
                 logger.info(f"Successfully resolved slug '{slug}' for query: {cleaned_query}")
                 return slug
 
+    # === المرحلة 2: تجريب slug مباشرة على WitAnime (بدون بحث) ===
+    # نحول العنوان لـ slug ونجرب نفتح الصفحة مباشرة
+    for cleaned_q, _ in queries_to_try:
+        direct_slug = re.sub(r'[^a-z0-9]+', '-', cleaned_q.lower()).strip('-')
+        if direct_slug and len(direct_slug) > 3:
+            for domain in WITANIME_DOMAINS:
+                test_url = f"https://{domain}/anime/{quote(direct_slug)}/"
+                try:
+                    status, _, text, _ = await session_get_response_quick(test_url, timeout=3)
+                    if status == 200 and text and ("anime-info" in text or "episode" in text or "الحلقة" in text):
+                        logger.info(f"Direct slug probe matched: {test_url}")
+                        return direct_slug
+                except Exception:
+                    pass
+
+    # === المرحلة 3: البحث بأول 3-4 كلمات من العناوين الطويلة ===
+    for cleaned_query, orig_query in short_prefix_queries:
+        logger.info(f"Searching WitAnime with short prefix: '{cleaned_query}' (from: {orig_query})")
+        results = await search_anime_scraper(cleaned_query)
+        if results:
+            slug = get_best_slug_match(results, cleaned_query)
+            if slug:
+                logger.info(f"Successfully resolved slug '{slug}' via short prefix: {cleaned_query}")
+                return slug
+
+    # === المرحلة 4: البحث بأجزاء العنوان المقسمة (بعد : أو - أو /) ===
     for cleaned_query, orig_query in split_queries:
         logger.info(f"Searching WitAnime for split fallback: {cleaned_query} (original: {orig_query})")
         results = await search_anime_scraper(cleaned_query)
@@ -1913,6 +1954,7 @@ async def resolve_anime_slug_scraper(
                 logger.info(f"Successfully resolved slug '{slug}' for split fallback: {cleaned_query}")
                 return slug
 
+    # === المرحلة 5: Gogoanime كبديل أخير ===
     logger.info(f"WitAnime failed to resolve slug, trying Gogoanime for: {title_romaji or title_english}")
     gogo_results = await search_anime_gogoanime(title_romaji or title_english)
     if gogo_results:
@@ -1922,6 +1964,27 @@ async def resolve_anime_slug_scraper(
 
     logger.warning(f"Could not resolve any slug for romaji='{title_romaji}', english='{title_english}'")
     return None
+
+async def session_get_response_quick(url: str, timeout: int = 3):
+    """طلب HTTP سريع بدون session مسبقة — للاستعلام المباشر عن slugs."""
+    headers = get_browser_headers(url)
+    try:
+        if CURL_CFFI_AVAILABLE and CurlAsyncSession:
+            async with CurlAsyncSession(impersonate="chrome120") as session:
+                resp = await session.get(url, headers=headers, timeout=timeout)
+                return resp.status_code, resp.content, resp.text, resp.headers
+        else:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, ssl=False, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                    body = await resp.read()
+                    try:
+                        text = body.decode('utf-8')
+                    except Exception:
+                        text = body.decode('latin-1', errors='ignore')
+                    return resp.status, body, text, resp.headers
+    except Exception:
+        return 0, b'', '', {}
+
 
 async def scrape_latest_episodes_gogoanime(limit: int = 10) -> List[Dict[str, Any]]:
     """

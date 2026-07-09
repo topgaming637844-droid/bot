@@ -55,7 +55,7 @@ class Config:
             domain = domain[8:]
         WEBAPP_BASE_URL = f"https://{domain}"
     else:
-        WEBAPP_BASE_URL = "https://botanmie.up.railway.app"
+        WEBAPP_BASE_URL = "https://web-production-290b4.up.railway.app"
 
     # Static list of 10 modern organic browser User-Agents for dynamic header rotation
     USER_AGENTS = [

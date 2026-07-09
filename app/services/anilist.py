@@ -1,9 +1,14 @@
 import aiohttp
+import asyncio
 from typing import Any, Optional
 from aiohttp_socks import ProxyConnector
 from urllib.parse import quote
 from config import config
 from app.utils.logging_config import logger
+
+# قائمة browser fingerprints للتبديل بينها عند الحظر
+IMPERSONATE_PROFILES = ["chrome124", "chrome120", "chrome119", "chrome116"]
+
 
 async def translate_to_english(text: str) -> Optional[str]:
     """Translates Arabic text to English using Google Translate free API."""
@@ -136,20 +141,32 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
         from app.utils.user_agents import get_random_user_agent
         ua = get_random_user_agent()
     except Exception:
-        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "Origin": "https://anilist.co",
         "Referer": "https://anilist.co/",
-        "User-Agent": ua
+        "User-Agent": ua,
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
     }
     
-    for attempt in range(2):
+    # Retry مع تبديل fingerprint وتأخير تدريجي (exponential backoff)
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        # تبديل البروكسي والـ fingerprint في كل محاولة
         proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if (config.PROXY_URL and attempt == 0) else None
+        impersonate_profile = IMPERSONATE_PROFILES[attempt % len(IMPERSONATE_PROFILES)]
+        
         if attempt > 0:
-            logger.info("Retrying search directly (bypassing proxy)...")
+            backoff_delay = 1.5 * attempt  # 1.5s, 3s
+            logger.info(f"Retry attempt {attempt+1}/{max_attempts} with profile '{impersonate_profile}' after {backoff_delay}s delay...")
+            await asyncio.sleep(backoff_delay)
             
         payload = {
             "query": MEDIA_QUERY,
@@ -159,8 +176,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
         
         try:
             if curl_cffi_available and CurlAsyncSession:
-                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                    logger.info("Scraping page: https://graphql.anilist.co (Direct Media Query via curl_cffi)")
+                async with CurlAsyncSession(impersonate=impersonate_profile, proxies=proxies) as session:
+                    logger.info(f"Scraping page: https://graphql.anilist.co (Direct Media Query via curl_cffi, profile={impersonate_profile})")
                     response = await session.post(url, json=payload, headers=headers, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
@@ -168,10 +185,10 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                         for media in media_list:
                             results.append(await parse_media_node(media))
                     else:
-                        logger.warning(f"AniList returned status {response.status_code}")
+                        logger.warning(f"AniList returned status {response.status_code} (profile={impersonate_profile})")
                         if response.status_code == 403:
-                            logger.warning("AniList returned 403 Forbidden. Transitioning to Kitsu fallback.")
-                            break
+                            logger.warning(f"AniList 403 Forbidden on attempt {attempt+1}. Will retry with different fingerprint...")
+                            continue  # جرب fingerprint تاني بدل ما توقف
                         raise Exception(f"AniList status {response.status_code}")
             else:
                 connector = get_connector() if attempt == 0 else None
@@ -198,8 +215,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                     "variables": {"search": query}
                 }
                 if curl_cffi_available and CurlAsyncSession:
-                    async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
-                        logger.info("Scraping page: https://graphql.anilist.co (Character Query via curl_cffi)")
+                    async with CurlAsyncSession(impersonate=impersonate_profile, proxies=proxies) as session:
+                        logger.info(f"Scraping page: https://graphql.anilist.co (Character Query via curl_cffi, profile={impersonate_profile})")
                         response = await session.post(url, json=payload_char, headers=headers, timeout=10)
                         if response.status_code == 200:
                             data = response.json()
@@ -214,8 +231,8 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                         else:
                             logger.warning(f"AniList character search returned status {response.status_code}")
                             if response.status_code == 403:
-                                logger.warning("AniList returned 403 Forbidden on character search. Transitioning to Kitsu fallback.")
-                                break
+                                logger.warning(f"AniList character search 403 on attempt {attempt+1}. Will retry...")
+                                continue
                 else:
                     connector = get_connector() if attempt == 0 else None
                     async with aiohttp.ClientSession(connector=connector) as session:
@@ -234,14 +251,14 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
                             else:
                                 logger.warning(f"AniList character search returned status {response.status}")
                                 if response.status == 403:
-                                    logger.warning("AniList returned 403 Forbidden on character search. Transitioning to Kitsu fallback.")
-                                    break
+                                    logger.warning(f"AniList character search 403 on attempt {attempt+1}. Will retry...")
+                                    continue
                                 
             if results:
                 break
         except Exception as e:
-            logger.warning(f"Attempt {attempt} failed in search_anilist: {e}")
-            if attempt == 0:
+            logger.warning(f"Attempt {attempt+1}/{max_attempts} failed in search_anilist: {e}")
+            if attempt < max_attempts - 1:
                 continue
             break
             
@@ -401,6 +418,8 @@ async def get_anime_by_id(anilist_id: int) -> Optional[dict[str, Any]]:
         curl_cffi_available = False
         CurlAsyncSession = None
 
+    impersonate_profile = IMPERSONATE_PROFILES[0]
+
     try:
         from app.utils.user_agents import get_random_user_agent
         ua = get_random_user_agent()
@@ -412,7 +431,12 @@ async def get_anime_by_id(anilist_id: int) -> Optional[dict[str, Any]]:
         "Accept": "application/json",
         "Origin": "https://anilist.co",
         "Referer": "https://anilist.co/",
-        "User-Agent": ua
+        "User-Agent": ua,
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
     }
     
     payload = {
@@ -424,7 +448,7 @@ async def get_anime_by_id(anilist_id: int) -> Optional[dict[str, Any]]:
         proxies = {"http": config.PROXY_URL, "https": config.PROXY_URL} if (config.PROXY_URL and attempt == 0) else None
         try:
             if curl_cffi_available and CurlAsyncSession:
-                async with CurlAsyncSession(impersonate="chrome120", proxies=proxies) as session:
+                async with CurlAsyncSession(impersonate=impersonate_profile, proxies=proxies) as session:
                     response = await session.post(url, json=payload, headers=headers, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
