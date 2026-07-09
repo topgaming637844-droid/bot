@@ -189,66 +189,7 @@ async def get_thumbnail_input(bot: Bot) -> Optional[FSInputFile]:
     return None
 
 async def get_video_thumbnail(bot: Bot, db_session_factory, anilist_id: int) -> Optional[FSInputFile]:
-    """
-    Retrieves video cover art thumbnail.
-    Focuses first on downloading the specific anime poster from image_url (SearchCache).
-    If that fails or does not exist, falls back to the default admin custom thumbnail.
-    """
-    from app.database.models import SearchCache
-    image_url = None
-    
-    # 1. Try to fetch the image_url from the SearchCache database table
-    try:
-        async with db_session_factory() as session:
-            stmt = select(SearchCache.image_url).where(SearchCache.anilist_id == anilist_id).limit(1)
-            res = await session.execute(stmt)
-            image_url = res.scalar()
-    except Exception as db_err:
-        logger.warning(f"Error fetching image_url from SearchCache for anilist_id={anilist_id}: {db_err}")
-        
-    # 2. If not found in SearchCache, query AniList API directly to get the image URL
-    if not image_url:
-        try:
-            from app.services.anilist import get_anime_by_id
-            logger.info(f"Thumbnail resolution: Querying AniList by ID {anilist_id} to resolve image_url...")
-            anilist_data = await get_anime_by_id(anilist_id)
-            if anilist_data:
-                image_url = anilist_data.get("image_url")
-        except Exception as api_err:
-            logger.warning(f"Failed to query AniList by ID to resolve image_url: {api_err}")
-            
-    # 3. If we have the image URL, download and prepare it as a compliant Telegram video thumbnail (320x320 max)
-    if image_url:
-        sanitized_url = re.sub(r'[^a-zA-Z0-9]', '_', str(image_url))[-20:]
-        raw_path = config.DOWNLOAD_DIR / f"anime_thumb_raw_{anilist_id}_{sanitized_url}.jpg"
-        optimized_path = config.DOWNLOAD_DIR / f"anime_thumb_320_{anilist_id}_{sanitized_url}.jpg"
-        
-        if optimized_path.exists() and optimized_path.stat().st_size > 0:
-            logger.info(f"Using cached optimized anime thumbnail for anilist_id={anilist_id}")
-            return FSInputFile(str(optimized_path))
-            
-        try:
-            logger.info(f"Downloading anime poster for thumbnail: {image_url}")
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_url, timeout=30) as resp:
-                    if resp.status == 200:
-                        os.makedirs(os.path.dirname(raw_path), exist_ok=True)
-                        with open(raw_path, "wb") as f:
-                            f.write(await resp.read())
-                        
-                        if raw_path.exists() and raw_path.stat().st_size > 0:
-                            success = prepare_telegram_thumbnail(raw_path, optimized_path)
-                            if success and optimized_path.exists():
-                                return FSInputFile(str(optimized_path))
-                            else:
-                                return FSInputFile(str(raw_path))
-                    else:
-                        logger.warning(f"Failed to download anime poster, status: {resp.status}")
-        except Exception as dl_err:
-            logger.warning(f"Error downloading/preparing anime poster: {dl_err}")
-            
-    # 4. Fallback to custom admin thumbnail (البوستر الموحد) as the last backup plan
-    logger.info("Falling back to custom admin thumbnail as backup cover art...")
+    """Retrieves custom admin thumbnail strictly and exclusively as video cover art."""
     return await get_thumbnail_input(bot)
 
 async def save_telegram_file_cache(db_session_factory, anilist_id: int, ep_number: str, quality: str, file_id: str, file_size_mb: Optional[float] = None):

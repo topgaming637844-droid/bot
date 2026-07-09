@@ -57,15 +57,17 @@ async def broadcast_new_episode_notification(
             [InlineKeyboardButton(text="📢 قناة البوت الرسمية", url=chan_url)]
         ])
         
-        # Check for custom ads poster configured by the admin
-        custom_poster = await get_setting("ads_poster_file_id")
-        if custom_poster:
-            photo = custom_poster
+        # Differentiate: Focus on the specific anime poster itself, fall back to custom ads poster as backup
+        if image_url and image_url.startswith("http"):
+            photo = URLInputFile(image_url)
         else:
-            # Fallback to a high-quality default anime poster if no image is available
-            DEFAULT_POSTER_URL = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop"
-            final_image = image_url if (image_url and image_url.startswith("http")) else DEFAULT_POSTER_URL
-            photo = URLInputFile(final_image)
+            # Last backup options: Custom ads poster setting, then hardcoded default URL
+            custom_poster = await get_setting("ads_poster_file_id")
+            if custom_poster:
+                photo = custom_poster
+            else:
+                DEFAULT_POSTER_URL = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop"
+                photo = URLInputFile(DEFAULT_POSTER_URL)
             
         await bot.send_photo(
             chat_id=chat_id,
