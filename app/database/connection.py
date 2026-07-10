@@ -12,6 +12,7 @@ if _raw_url.startswith("postgresql://") or _raw_url.startswith("postgres://"):
     _raw_url = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     _raw_url = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
+is_sqlite = _raw_url.startswith("sqlite")
 if is_sqlite:
     connect_args = {"check_same_thread": False}
     async_engine = create_async_engine(
