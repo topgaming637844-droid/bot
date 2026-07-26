@@ -1,11 +1,12 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
+from datetime import datetime
 import asyncio
 
 from config import config
@@ -1914,32 +1915,112 @@ async def handle_admin_export_db(callback: CallbackQuery, db_session: AsyncSessi
     if not authorized:
         await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
         return
-        
+
     await safe_answer(callback)
     status_msg = await callback.message.answer("🔄 جاري تحضير وتصدير قاعدة البيانات...")
-    
+
     try:
-        from aiogram.types import FSInputFile
+        # ─── تحديد مسار قاعدة البيانات بشكل ديناميكي (يعمل على Railway وLocally) ───
         db_url = config.DATABASE_URL
         db_file_name = "bot.db"
         if "sqlite" in db_url:
-            db_file_name = db_url.split("///")[-1]
-            
-        project_root = Path(r"c:\Users\monsm\OneDrive\Desktop\BOT")
+            raw_path = db_url.split("///")[-1]
+            db_file_name = raw_path if raw_path else "bot.db"
+
         db_path = Path(db_file_name)
         if not db_path.is_absolute():
+            # جذر المشروع ديناميكياً بجانب config.py — يعمل على أي بيئة
+            project_root = Path(__file__).parent.parent.parent.resolve()
             db_path = project_root / db_path
-            
+
+        logger.info(f"[BACKUP] Resolved DB path: {db_path}")
+
         if db_path.exists() and db_path.is_file():
-            db_doc = FSInputFile(str(db_path), filename="bot.db")
+            file_size_mb = db_path.stat().st_size / (1024 * 1024)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"backup_{timestamp}_bot.db"
+
+            with open(db_path, "rb") as f:
+                file_bytes = f.read()
+
+            input_file = BufferedInputFile(file_bytes, filename=filename)
             await callback.message.bot.send_document(
                 chat_id=callback.from_user.id,
-                document=db_doc,
-                caption="💾 <b>قاعدة بيانات البوت كاملة (bot.db)</b>"
+                document=input_file,
+                caption=(
+                    f"💾 <b>نسخة احتياطية من قاعدة البيانات</b>\n\n"
+                    f"📁 الملف: <code>{db_path.name}</code>\n"
+                    f"📦 الحجم: <code>{file_size_mb:.2f} MB</code>\n"
+                    f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+                ),
+                parse_mode="HTML"
             )
             await status_msg.delete()
+            logger.info(f"[BACKUP] Database backup sent via button to admin {callback.from_user.id}")
         else:
-            await status_msg.edit_text(f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار: {db_path}")
+            await status_msg.edit_text(
+                f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار:\n<code>{db_path}</code>",
+                parse_mode="HTML"
+            )
     except Exception as e:
         logger.exception("Error exporting database")
         await status_msg.edit_text(f"❌ فشل تصدير قاعدة البيانات: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────
+# ═══  أمر /backup_db المباشر — للمطور (Super Admin) فقط  ═══
+# ─────────────────────────────────────────────────────────────────
+@router.message(Command("backup_db"))
+async def cmd_backup_db(message: Message):
+    """أمر سري للمطور: يرسل ملف قاعدة البيانات كـ Document مباشرة."""
+    if message.from_user.id != config.SUPER_ADMIN_ID:
+        await message.answer("❌ هذا الأمر مخصص للمطور فقط.")
+        return
+
+    status_msg = await message.answer("⏳ جاري إنشاء نسخة احتياطية من قاعدة البيانات...")
+
+    try:
+        db_url = config.DATABASE_URL
+        db_file_name = "bot.db"
+        if "sqlite" in db_url:
+            raw_path = db_url.split("///")[-1]
+            db_file_name = raw_path if raw_path else "bot.db"
+
+        db_path = Path(db_file_name)
+        if not db_path.is_absolute():
+            project_root = Path(__file__).parent.parent.parent.resolve()
+            db_path = project_root / db_path
+
+        logger.info(f"[BACKUP] /backup_db resolved DB path: {db_path}")
+
+        if not db_path.exists():
+            await status_msg.edit_text(
+                f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار:\n<code>{db_path}</code>",
+                parse_mode="HTML"
+            )
+            return
+
+        file_size_mb = db_path.stat().st_size / (1024 * 1024)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"backup_{timestamp}_bot.db"
+
+        with open(db_path, "rb") as f:
+            file_bytes = f.read()
+
+        input_file = BufferedInputFile(file_bytes, filename=filename)
+        await message.answer_document(
+            document=input_file,
+            caption=(
+                f"💾 <b>نسخة احتياطية من قاعدة البيانات</b>\n\n"
+                f"📁 الملف: <code>{db_path.name}</code>\n"
+                f"📦 الحجم: <code>{file_size_mb:.2f} MB</code>\n"
+                f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+            ),
+            parse_mode="HTML"
+        )
+        await status_msg.delete()
+        logger.info(f"[BACKUP] /backup_db sent successfully to admin {message.from_user.id}")
+
+    except Exception as e:
+        logger.exception(f"[BACKUP] Failed to send database backup via /backup_db: {e}")
+        await status_msg.edit_text(f"❌ فشل إرسال قاعدة البيانات:\n<code>{e}</code>", parse_mode="HTML")
