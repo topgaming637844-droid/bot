@@ -876,10 +876,21 @@ async def execute_queued_task(
         proxy_msg = StatusMsgProxy(bot, chat_id, status_msg_id)
         
         success = await download_file(download_url, temp_file_path, proxy_msg, size, selected_quality)
+        
+        # 🛡️ فحص حماية حازم: التأكد من أن الملف المحمل هو فيديو حقيقي بحجم لا يقل عن 5 ميجابايت
+        if success and temp_file_path.exists():
+            actual_size = os.path.getsize(temp_file_path)
+            if actual_size < 5 * 1024 * 1024:
+                logger.warning(f"Primary download produced undersized file ({actual_size / 1024:.1f} KB). Rejecting non-video corrupted file!")
+                try: os.remove(temp_file_path)
+                except Exception: pass
+                success = False
+
         if not success:
             logger.warning(f"Primary download failed for {download_url}. Trying other qualities/mirrors as fallback...")
             fallback_urls = [url for q, url in qualities.items() if url != download_url]
-            # Prioritize HLS/m3u8 mirrors
+            # استبعاد الملفات غير الملتزمة بالميديا كـ css و js
+            fallback_urls = [u for u in fallback_urls if not any(u.lower().endswith(ext) for ext in ['.css', '.js', '.png', '.jpg', '.jpeg', '.html'])]
             fallback_urls.sort(key=lambda u: 0 if (".m3u8" in u or "wish" in u or "swdyu" in u) else 1)
             
             for fb_url in fallback_urls:
@@ -900,9 +911,16 @@ async def execute_queued_task(
                     fb_size = size
                     
                 success = await download_file(fb_url, temp_file_path, proxy_msg, fb_size, selected_quality)
-                if success:
-                    logger.info(f"Fallback download succeeded using mirror: {fb_url}")
-                    break
+                if success and temp_file_path.exists():
+                    actual_size = os.path.getsize(temp_file_path)
+                    if actual_size < 5 * 1024 * 1024:
+                        logger.warning(f"Fallback download mirror {fb_url} produced undersized file ({actual_size / 1024:.1f} KB). Rejecting!")
+                        try: os.remove(temp_file_path)
+                        except Exception: pass
+                        success = False
+                    else:
+                        logger.info(f"Fallback download succeeded using mirror: {fb_url} (Size: {actual_size / (1024*1024):.2f} MB)")
+                        break
                     
         if not success:
             if status_msg_id:
