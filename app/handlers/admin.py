@@ -1979,9 +1979,42 @@ async def _build_db_backup():
 
 async def _backup_postgres(db_url: str, timestamp: str):
     """
-    يتصل بـ PostgreSQL عبر asyncpg ويدمب جميع الجداول كـ SQL INSERT statements.
-    يعمل على Railway لأن البوت داخل نفس الشبكة.
+    تستخرج النسخة الاحتياطية الكاملة لـ PostgreSQL.
+    تحاول أولاً استخدام أمر pg_dump الرسمي لإنشاء Dump شامل 100% يدمج بيانات البوت وسيرفر PostgreSQL في ملف واحد.
+    وإذا لم يتوفر pg_dump على السيرفر تسقط تلقائياً على مولد asyncpg المطور.
     """
+    clean_url = db_url
+    for prefix in ["postgresql+asyncpg://", "postgresql+aiopg://", "postgres+asyncpg://"]:
+        if clean_url.startswith(prefix):
+            clean_url = "postgresql://" + clean_url[len(prefix):]
+            break
+
+    # 1. 🚀 محاولة استخدام أمر pg_dump السيرفري الرسمي لإنشاء النسخة المتكاملة الشاملة بنفس حجم بيكب السيرفر
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "pg_dump", clean_url, "--clean", "--if-exists", "--inserts", "--no-owner", "--no-privileges",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0 and stdout and len(stdout) > 500:
+            file_bytes = stdout
+            filename = f"backup_{timestamp}_full_postgres.sql"
+            size_mb = len(file_bytes) / (1024 * 1024)
+            size_kb = len(file_bytes) / 1024
+            size_str = f"{size_mb:.2f} MB" if size_mb >= 1.0 else f"{size_kb:.1f} KB"
+            caption = (
+                f"💾 <b>نسخة احتياطية رسمية شاملة PostgreSQL (Full Dump)</b>\n\n"
+                f"⚡ المحرك: <code>pg_dump CLI Official</code>\n"
+                f"📦 حجم الملف: <code>{size_str}</code>\n"
+                f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+                f"✨ ملف واحد متكامل يدمج بيانات البوت وبنية السيرفر والتسلسلات للدمج المباشر مع سيرفرك!"
+            )
+            logger.info(f"[BACKUP] Official pg_dump success: {size_str}")
+            return file_bytes, filename, caption
+    except Exception as e:
+        logger.info(f"[BACKUP] pg_dump CLI unavailable ({e}). Falling back to asyncpg dumper...")
+
     try:
         import asyncpg
     except ImportError:
@@ -1989,13 +2022,6 @@ async def _backup_postgres(db_url: str, timestamp: str):
         return None, None, error
 
     try:
-        # تحويل URL لصيغة asyncpg (يزيل +aiosqlite ونحوها)
-        clean_url = db_url
-        for prefix in ["postgresql+asyncpg://", "postgresql+aiopg://", "postgres+asyncpg://"]:
-            if clean_url.startswith(prefix):
-                clean_url = "postgresql://" + clean_url[len(prefix):]
-                break
-
         logger.info("[BACKUP] Connecting to PostgreSQL for backup...")
         conn = await asyncpg.connect(clean_url)
 
