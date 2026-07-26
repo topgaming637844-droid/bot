@@ -69,8 +69,8 @@ async def get_html_headless(url: str) -> str:
 
 async def get_witanime_links_headless(url: str) -> Dict[str, str]:
     """
-    Uses Playwright headless browser with network request interception and DOM inspection
-    to resolve WitAnime video links when static scraping fails.
+    Uses Playwright headless browser with network request interception, automated DOM server clicking,
+    and frame inspection to resolve WitAnime video links when static scraping fails.
     """
     resolved = {}
     captured_urls = []
@@ -101,15 +101,42 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
             
             def handle_request(req):
                 u = req.url
-                if any(ext in u.lower() for ext in ['.m3u8', '.mp4', 'gofile.io', 'mp4upload.com', 'streamwish', 'yona', 'videa']):
+                lower_u = u.lower()
+                if any(ext in lower_u for ext in ['.m3u8', '.mp4', 'gofile.io', 'mp4upload.com', 'streamwish', 'yona', 'yonaplay', 'videa', 'archive.org', 'hanerix', 'soraplay']):
                     if u not in captured_urls and not u.startswith('data:'):
                         captured_urls.append(u)
             
             page.on("request", handle_request)
             
-            await page.goto(url, wait_until='domcontentloaded', timeout=25000)
-            await page.wait_for_timeout(4000)
+            try:
+                await page.goto(url, wait_until='domcontentloaded', timeout=25000)
+            except Exception:
+                pass
+                
+            await page.wait_for_timeout(2500)
             
+            # 🔘 النقر التلقائي على أزرار وتبويبات السيرفرات لتفعيل تشغيل السيرفرات ديناميكياً
+            try:
+                server_btns = await page.query_selector_all("#episode-servers li, .episode-servers li, ul.servers-list li, .servers-list li, #episode-servers a, .episode-servers a, .servers-list a, li[data-server], button[data-server]")
+                for btn in server_btns[:8]:
+                    try:
+                        await btn.click(timeout=1500)
+                        await page.wait_for_timeout(1000)
+                    except Exception:
+                        pass
+            except Exception as click_err:
+                logger.warning(f"Playwright clicking server tabs error: {click_err}")
+
+            # فحص إطارات الصفحة بعد التفاعل
+            try:
+                for frame in page.frames:
+                    f_url = frame.url
+                    if f_url and f_url != "about:blank" and f_url != url:
+                        if f_url not in captured_urls:
+                            captured_urls.append(f_url)
+            except Exception:
+                pass
+
             content = await page.content()
             await browser.close()
             
@@ -124,17 +151,29 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
                 
             for a in download_btns:
                 href = a.get("href")
-                if href and href.startswith("http") and not any(x in href for x in ["mega.nz", "drive.google.com", "witanime.pics/episode", "witanime.life/episode"]):
-                    label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
-                    q_name = normalize_quality_name(label)
-                    if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                        q_name = "480p"
-                    if q_name not in resolved:
-                        resolved[q_name] = href
+                if href:
+                    if href.startswith("//"):
+                        href = f"https:{href}"
+                    elif not href.startswith("http"):
+                        href = urljoin(url, href)
+                    if href.startswith("http"):
+                        lower_h = href.lower()
+                        if any(x in lower_h for x in ["/episode/", "/anime/", "javascript:", "facebook.com", "twitter.com", "t.me", "telegram"]):
+                            continue
+                        if href.rstrip("/") == url.rstrip("/"):
+                            continue
+                        label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
+                        q_name = normalize_quality_name(label)
+                        if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                            q_name = "480p"
+                        if q_name not in resolved:
+                            resolved[q_name] = href
                         
             # Add network captured stream/download URLs
             for u in captured_urls:
                 lower_u = u.lower()
+                if any(x in lower_u for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/"]):
+                    continue
                 q_name = "480p"
                 if "1080" in lower_u or "fhd" in lower_u:
                     q_name = "1080p"
@@ -2064,7 +2103,54 @@ async def get_download_links_gogoanime(play_url: str) -> Dict[str, str]:
             try:
                 soup = BeautifulSoup(html, "html.parser")
                 
-                # 1. Try iframe player embed
+                # 1. Try Gogoanime download page button (gogohd / emg.stream)
+                download_btn = soup.select_one("li.downdload a, a[href*='download'], a[href*='gogohd'], a[href*='emg.stream']")
+                if download_btn and download_btn.get("href"):
+                    dl_page_url = download_btn["href"]
+                    if dl_page_url.startswith("//"):
+                        dl_page_url = f"https:{dl_page_url}"
+                    logger.info(f"Found Gogoanime download page URL: {dl_page_url}")
+                    
+                    dl_html = None
+                    try:
+                        connector = get_connector()
+                        async with aiohttp.ClientSession(connector=connector) as session:
+                            async with session.get(dl_page_url, headers=get_browser_headers(dl_page_url), timeout=10) as dl_resp:
+                                if dl_resp.status == 200:
+                                    dl_html = await dl_resp.text()
+                    except Exception:
+                        pass
+                        
+                    if not dl_html:
+                        try:
+                            dl_html = await get_html_headless(dl_page_url)
+                        except Exception:
+                            pass
+                            
+                    if dl_html:
+                        dl_soup = BeautifulSoup(dl_html, "html.parser")
+                        links_found = {}
+                        for a in dl_soup.select(".mirror_link a, a[download], a[href*='.mp4']"):
+                            href = a.get("href")
+                            if href and href.startswith("http"):
+                                label = (a.text or "").strip()
+                                q_name = normalize_quality_name(label)
+                                if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                                    if "1080" in label or "fhd" in label:
+                                        q_name = "1080p"
+                                    elif "720" in label or "hd" in label:
+                                        q_name = "720p"
+                                    elif "360" in label or "sd" in label:
+                                        q_name = "360p"
+                                    else:
+                                        q_name = "480p"
+                                if q_name not in links_found:
+                                    links_found[q_name] = href
+                        if links_found:
+                            logger.info(f"Gogoanime download page resolved {len(links_found)} direct MP4 links on {domain}")
+                            return links_found
+
+                # 2. Try iframe player embed
                 iframe = soup.select_one("iframe")
                 if iframe and iframe.get("src"):
                     embed_url = iframe["src"]
@@ -2097,7 +2183,7 @@ async def get_download_links_gogoanime(play_url: str) -> Dict[str, str]:
                             logger.info(f"Resolved Gogoanime m3u8 link on {domain}")
                             return {"720p": hls_src.group(1)}
                 
-                # 2. Direct regex scan for video sources
+                # 3. Direct regex scan for video sources
                 hls_match = re.search(r'https?://[^\s"\'\\]+?\.m3u8[^\s"\'\\]*', html)
                 if hls_match:
                     logger.info(f"Resolved direct Gogoanime m3u8 on {domain}")
