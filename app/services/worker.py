@@ -628,9 +628,11 @@ async def execute_queued_task(
             res_tf = await session.execute(stmt_tf)
             tf_entry = res_tf.scalars().first()
             if tf_entry:
-                cached_file_id = str(tf_entry.file_id)
-                cached_quality = str(tf_entry.quality)
-                cached_file_size = float(tf_entry.file_size) if tf_entry.file_size else None
+                c_fid = str(tf_entry.file_id)
+                if not c_fid.startswith("http") and not c_fid.startswith("about:") and len(c_fid) >= 20 and " " not in c_fid:
+                    cached_file_id = c_fid
+                    cached_quality = str(tf_entry.quality)
+                    cached_file_size = float(tf_entry.file_size) if tf_entry.file_size else None
     except Exception as tf_err:
         logger.warning(f"Note: TelegramFileCache check skipped: {tf_err}")
         
@@ -827,7 +829,8 @@ async def execute_queued_task(
     )
 
     # If it is a Telegram file ID
-    if not download_url.startswith("http"):
+    is_valid_file_id = not download_url.startswith("http") and not download_url.startswith("about:") and len(download_url) >= 20 and " " not in download_url
+    if is_valid_file_id:
         logger.info(f"Zero-second Delivery: Sending cached File ID {download_url}")
         if status_msg_id:
             try: await bot.delete_message(chat_id=chat_id, message_id=status_msg_id)
