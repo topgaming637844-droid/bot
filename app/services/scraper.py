@@ -1545,47 +1545,18 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
                     logger.info(f"Successfully resolved {len(resolved_links)} download link qualities from standard parsing on {domain}")
                     return resolved_links
                 
-                # 2. ──── Playwright fallback إذا لم تجد _zX/_zK في HTML الثابت ────
-                # WitAnime الآن يحتاج JavaScript لتشغيل وكشف المتغيرات المشفرة
-                zx_present = "_zX" in html or "_zK" in html
-                if not zx_present:
-                    logger.info(f"_zX/_zK variables not found in static HTML on {domain}. Trying Playwright to execute JS...")
-                    try:
-                        pw_html = await get_html_headless(target_url)
-                        if pw_html and "_zX" in pw_html:
-                            logger.info(f"Playwright found _zX variables. Re-parsing with JS-rendered HTML...")
-                            pw_soup = BeautifulSoup(pw_html, "html.parser")
-                            resolved_links = await _parse_standard_watch_page(pw_html, pw_soup, session, target_url)
-                            if resolved_links:
-                                logger.info(f"Playwright JS-rendered parsing yielded {len(resolved_links)} links on {domain}")
-                                return resolved_links
-                            # Try blind regex on Playwright HTML too
-                            resolved_links = await execute_blind_regex_harvest(pw_html, session)
-                            if resolved_links:
-                                logger.info(f"Playwright blind regex harvest yielded {len(resolved_links)} links on {domain}")
-                                return resolved_links
-                        elif pw_html:
-                            # _zX still not found even with Playwright - try blind scan anyway
-                            logger.info(f"Playwright HTML loaded but _zX not found on {domain}. Trying blind regex on Playwright HTML...")
-                            resolved_links = await execute_blind_regex_harvest(pw_html, session)
-                            if resolved_links:
-                                logger.info(f"Playwright blind regex yielded {len(resolved_links)} links on {domain}")
-                                return resolved_links
-                    except Exception as pw_err:
-                        logger.warning(f"Playwright JS-rendering fallback failed on {domain}: {pw_err}")
-                    
-                # 3. Try blind regex scan on original static HTML
-                logger.info(f"Standard parsing yielded 0 links on {domain}. Triggering execute_blind_regex_harvest...")
+                # 2. ──── Playwright headless fallback (تفاعل مع أزرار السيرفرات بالمتصفح) ────
+                logger.info(f"Standard static parsing yielded 0 links on {domain}. Triggering Playwright headless server clicking & interception...")
+                resolved_links = await get_witanime_links_headless(target_url)
+                if resolved_links:
+                    logger.info(f"Playwright headless resolved {len(resolved_links)} download link qualities on {domain}")
+                    return resolved_links
+                
+                # 3. Try blind regex scan on raw HTML if Playwright yielded 0
+                logger.info(f"Playwright yielded 0 links on {domain}. Triggering execute_blind_regex_harvest...")
                 resolved_links = await execute_blind_regex_harvest(html, session)
                 if resolved_links:
                     logger.info(f"Successfully resolved {len(resolved_links)} download link qualities from blind regex harvest on {domain}")
-                    return resolved_links
-
-                # 4. Try Playwright network interception + DOM harvest
-                logger.info(f"Executing Playwright network interception fallback for {target_url}...")
-                resolved_links = await get_witanime_links_headless(target_url)
-                if resolved_links:
-                    logger.info(f"Playwright network interception resolved {len(resolved_links)} download link qualities on {domain}")
                     return resolved_links
             except Exception as e:
                 logger.exception(f"Error processing watch page domain mirror {target_url}: {e}")
