@@ -55,22 +55,27 @@ import time
 SEARCH_MEMORY_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 CACHE_TTL = 3600  # 1 hour in-memory cache for 0-second instant search resolution
 
-# Optimized slim GraphQL query for searching anime directly
+# Optimized slim GraphQL query for searching anime directly (with sort: SEARCH_MATCH for better fuzzy results)
 MEDIA_QUERY = """
-query ($search: String) {
-  Page(page: 1, perPage: 8) {
-    media(search: $search, type: ANIME) {
+query ($search: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
       id
       title {
         romaji
         english
+        native
       }
       synonyms
       description
       coverImage {
         large
+        extraLarge
       }
       duration
+      episodes
+      status
+      seasonYear
     }
   }
 }
@@ -170,7 +175,11 @@ async def search_anilist(query: str) -> list[dict[str, Any]]:
             
         payload = {
             "query": MEDIA_QUERY,
-            "variables": {"search": search_query}
+            "variables": {
+                "search": search_query,
+                "page": 1,
+                "perPage": 10
+            }
         }
         results = []
         
