@@ -1675,39 +1675,45 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
             
         for a in download_btns:
             href = a.get("href")
-            if href and href.startswith("http"):
-                if any(x in href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
-                    continue
-                label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
-                q_name = normalize_quality_name(label)
-                if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
-                    if "1080" in label or "fhd" in label or "جودة خارقة" in label:
-                        q_name = "1080p"
-                    elif "720" in label or "hd" in label or "جودة عالية" in label:
-                        q_name = "720p"
-                    elif "360" in label or "sd" in label or "جودة كافية" in label:
-                        q_name = "360p"
-                    else:
-                        q_name = "480p"
-
-                final_url = href
-                if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
-                    try:
-                        logger.info(f"Following shortlink redirect for fallback download link: {href}")
-                        headers = get_browser_headers(href)
-                        if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-                            resp = await session.get(href, headers=headers, timeout=8)
-                            if resp.url:
-                                final_url = str(resp.url)
+            if href:
+                if href.startswith("//"):
+                    href = f"https:{href}"
+                elif not href.startswith("http"):
+                    href = urljoin(play_url, href)
+                    
+                if href.startswith("http"):
+                    if any(x in href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
+                        continue
+                    label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
+                    q_name = normalize_quality_name(label)
+                    if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                        if "1080" in label or "fhd" in label or "جودة خارقة" in label:
+                            q_name = "1080p"
+                        elif "720" in label or "hd" in label or "جودة عالية" in label:
+                            q_name = "720p"
+                        elif "360" in label or "sd" in label or "جودة كافية" in label:
+                            q_name = "360p"
                         else:
-                            async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
-                                final_url = str(resp.url)
-                        logger.info(f"Resolved shortlink final destination: {final_url}")
-                    except Exception as ex:
-                        logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+                            q_name = "480p"
 
-                if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
-                    resolved_links[q_name] = final_url
+                    final_url = href
+                    if "go.witanime" in href or "/go/" in href or "redirect" in href or "short" in href:
+                        try:
+                            logger.info(f"Following shortlink redirect for fallback download link: {href}")
+                            headers = get_browser_headers(href)
+                            if hasattr(session, 'get') and hasattr(session, 'impersonate'):
+                                resp = await session.get(href, headers=headers, timeout=8)
+                                if resp.url:
+                                    final_url = str(resp.url)
+                            else:
+                                async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
+                                    final_url = str(resp.url)
+                            logger.info(f"Resolved shortlink final destination: {final_url}")
+                        except Exception as ex:
+                            logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+
+                    if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
+                        resolved_links[q_name] = final_url
 
     # ──── Brute-Force Fallback (استخراج عنيف من <iframe> وحاويات episode-servers) ────
     if not resolved_links:
@@ -1717,6 +1723,8 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
             if src:
                 if src.startswith("//"):
                     src = f"https:{src}"
+                elif not src.startswith("http"):
+                    src = urljoin(play_url, src)
                 if src.startswith("http"):
                     lower_src = src.lower()
                     if any(k in lower_src for k in ["embed", "player", "vid", "watch", "stream", "yona", "videa", "soraplay", "hanerix", "mp4upload", "drive", "ok.ru"]):
@@ -1743,7 +1751,9 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                 if url_val:
                     if url_val.startswith("//"):
                         url_val = f"https:{url_val}"
-                    if url_val.startswith("http") or "/go/" in url_val or "go.witanime" in url_val:
+                    elif not url_val.startswith("http"):
+                        url_val = urljoin(play_url, url_val)
+                    if url_val.startswith("http"):
                         label = (el.text or "").strip() + " " + " ".join(el.get("class", [])) + " " + (el.get("data-server") or "")
                         q_name = normalize_quality_name(label)
                         if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
