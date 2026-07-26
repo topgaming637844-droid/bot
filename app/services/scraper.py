@@ -137,11 +137,11 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
             except Exception as click_err:
                 logger.warning(f"Playwright clicking server tabs error: {click_err}")
 
-            # فحص إطارات الصفحة بعد التفاعل (مع استبعاد الإعلانات)
+            # فحص إطارات الصفحة بعد التفاعل (مع استبعاد الإعلانات وصفحات about:)
             try:
                 for frame in page.frames:
                     f_url = frame.url
-                    if f_url and f_url != "about:blank" and f_url != url:
+                    if f_url and not f_url.startswith("about:") and f_url != url:
                         if not any(ad in f_url.lower() for ad in AD_DOMAINS):
                             if f_url not in captured_urls:
                                 captured_urls.append(f_url)
@@ -182,21 +182,32 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
                         if q_name not in resolved:
                             resolved[q_name] = href
                         
-            # Add network captured stream/download URLs (filtering out ads)
+            # Add network captured stream/download URLs (filtering out ads & distributing qualities)
             for u in captured_urls:
                 lower_u = u.lower()
-                if any(x in lower_u for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/"]):
+                if any(x in lower_u for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/", "about:", "javascript:"]):
                     continue
                 if any(ad in lower_u for ad in AD_DOMAINS):
                     continue
-                q_name = "480p"
+                    
+                q_name = None
                 if "1080" in lower_u or "fhd" in lower_u:
                     q_name = "1080p"
                 elif "720" in lower_u or "hd" in lower_u:
                     q_name = "720p"
                 elif "360" in lower_u or "sd" in lower_u:
                     q_name = "360p"
-                if q_name not in resolved:
+                elif "480" in lower_u:
+                    q_name = "480p"
+
+                if not q_name:
+                    # Distribute captured server links sequentially across available quality slots
+                    for target_q in ["1080p", "720p", "480p", "360p"]:
+                        if target_q not in resolved:
+                            q_name = target_q
+                            break
+                            
+                if q_name and q_name not in resolved:
                     resolved[q_name] = u
 
     except Exception as e:
