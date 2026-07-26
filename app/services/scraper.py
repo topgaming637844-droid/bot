@@ -1065,20 +1065,27 @@ async def _run_get_episodes(session: Any, anime_slug: str) -> Dict[str, Any]:
     }
 
 async def fetch_url_content(url: str, session: Any, referer: Optional[str] = None) -> str:
-    """Universal helper to fetch HTML/text content from any URL using browser headers & TLS impersonation."""
+    """Universal helper to fetch HTML/text content from any URL using browser headers, TLS impersonation, and Playwright fallback."""
     headers = get_browser_headers(referer if referer else url)
     try:
         if hasattr(session, 'get') and hasattr(session, 'impersonate'):
             resp = await session.get(url, headers=headers, timeout=10)
             if resp.status_code == 200:
-                return resp.text
+                content = resp.text
+                if content and not any(cf in content.lower() for cf in ["just a moment", "cloudflare", "enable javascript", "ddos"]):
+                    return content
         else:
             async with session.get(url, headers=headers, allow_redirects=True, ssl=False, timeout=10) as resp:
                 if resp.status == 200:
-                    return await resp.text()
+                    content = await resp.text()
+                    if content and not any(cf in content.lower() for cf in ["just a moment", "cloudflare", "enable javascript", "ddos"]):
+                        return content
     except Exception as e:
         logger.warning(f"Error fetching URL content for {url}: {e}")
-    return ""
+
+    # 🚀 سقوط تلقائي على Playwright إذا واجه الطلب حماية Cloudflare أو يتطلب تشغيل جافاسكريبت
+    logger.info(f"fetch_url_content falling back to Playwright headless for URL: {url}")
+    return await get_html_headless(url)
 
 async def get_m3u8_from_embed(embed_url: str, session: Any, referer: Optional[str] = None) -> Optional[str]:
     """Resolves and extracts .m3u8 master playlist or direct video file using custom player unpacker."""
