@@ -415,6 +415,31 @@ async def session_get_response(session: Any, url: str, headers: Optional[dict] =
         logger.warning(f"Session get failed for {url}: {e}")
         return 0, b'', '', {}
 
+async def get_html_headless(url: str) -> str:
+    """Fetches full rendered HTML content using Playwright headless browser to bypass Cloudflare 403."""
+    if not PLAYWRIGHT_AVAILABLE or not async_playwright:
+        return ""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 720}
+            )
+            page = await context.new_page()
+            await page.add_init_script("delete navigator.__proto__.webdriver;")
+            await page.goto(url, wait_until='domcontentloaded', timeout=15000)
+            await page.wait_for_timeout(1500)
+            html = await page.content()
+            await browser.close()
+            return html
+    except Exception as e:
+        logger.warning(f"get_html_headless failed for {url}: {e}")
+        return ""
+
 async def get_html(url: str, session: Any) -> str:
     """Fetches HTML content with browser headers and cookie session."""
     status, _, text, _ = await session_get_response(session, url, timeout=12)
