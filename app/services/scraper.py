@@ -1676,7 +1676,6 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
         for a in download_btns:
             href = a.get("href")
             if href and href.startswith("http"):
-                # تخطي الروابط غير المدعومة
                 if any(x in href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
                     continue
                 label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
@@ -1709,7 +1708,55 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
 
                 if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
                     resolved_links[q_name] = final_url
-                    
+
+    # ──── Brute-Force Fallback (استخراج عنيف من <iframe> وحاويات episode-servers) ────
+    if not resolved_links:
+        logger.info("Executing Brute-Force Fallback: Scanning all <iframe> elements...")
+        for iframe in soup.find_all("iframe"):
+            src = iframe.get("src") or iframe.get("data-src") or iframe.get("data-lazy-src")
+            if src:
+                if src.startswith("//"):
+                    src = f"https:{src}"
+                if src.startswith("http"):
+                    lower_src = src.lower()
+                    if any(k in lower_src for k in ["embed", "player", "vid", "watch", "stream", "yona", "videa", "soraplay", "hanerix", "mp4upload", "drive", "ok.ru"]):
+                        q_name = "720p"
+                        if "1080" in lower_src or "fhd" in lower_src:
+                            q_name = "1080p"
+                        elif "360" in lower_src or "sd" in lower_src:
+                            q_name = "360p"
+                        elif "480" in lower_src:
+                            q_name = "480p"
+                            
+                        if q_name not in resolved_links:
+                            resolved_links[q_name] = src
+                        elif "Multi" not in resolved_links:
+                            resolved_links["Multi"] = src
+
+    if not resolved_links:
+        logger.info("Executing Brute-Force Fallback: Scanning episode-servers containers...")
+        server_containers = soup.select(".episode-servers, .servers, .watch-servers, .servers-list, #episode-servers, #watch-servers, .server-list, div.watch-servers, ul.servers-list")
+        for container in server_containers:
+            items = container.find_all(["a", "li", "button", "div"], recursive=True)
+            for el in items:
+                url_val = el.get("data-ep-url") or el.get("data-url") or el.get("data-server") or el.get("data-link") or el.get("href")
+                if url_val:
+                    if url_val.startswith("//"):
+                        url_val = f"https:{url_val}"
+                    if url_val.startswith("http") or "/go/" in url_val or "go.witanime" in url_val:
+                        label = (el.text or "").strip() + " " + " ".join(el.get("class", [])) + " " + (el.get("data-server") or "")
+                        q_name = normalize_quality_name(label)
+                        if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                            q_name = "480p"
+                        if q_name not in resolved_links:
+                            resolved_links[q_name] = url_val
+
+    if not resolved_links:
+        logger.info("Executing Brute-Force Fallback: Running raw HTML blind regex scanner...")
+        blind_links = await execute_blind_regex_harvest(html, session)
+        if blind_links:
+            resolved_links.update(blind_links)
+
     return resolved_links
 
 async def execute_blind_regex_harvest(raw_html: str, session: Any = None) -> Dict[str, str]:
