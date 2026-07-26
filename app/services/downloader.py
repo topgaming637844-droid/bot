@@ -209,16 +209,26 @@ async def select_best_quality(qualities: Dict[str, str], requested_quality: str 
     async with aiohttp.ClientSession(connector=connector) as session:
         for q in available_qualities:
             url = qualities[q]
+            lower_u = url.lower()
+            if any(x in lower_u for x in ["/episode/", "/anime/"]) and not ".m3u8" in lower_u and not ".mp4" in lower_u:
+                logger.warning(f"Skipping non-media HTML watch page URL in downloader: {url}")
+                continue
+                
             size = await get_url_file_size(url, session)
             if size == 0:
-                size = get_default_estimated_size(q)
+                if any(ext in lower_u for ext in [".m3u8", ".mp4", ".mkv", "stream", "file", "download", "mp4upload", "videa", "yona", "gofile", "ok.ru"]):
+                    size = get_default_estimated_size(q)
+                else:
+                    logger.warning(f"Rejecting URL {url} for quality {q} - zero size and non-media pattern.")
+                    continue
             resolved_sizes[q] = size
             logger.info(f"Checking quality {q}: Size is {size / (1024*1024):.2f} MB")
             
             if size > 0 and size <= MAX_TELEGRAM_LOCAL_SIZE:
                 return q, url, size
                 
-        lowest_q = available_qualities[-1] if available_qualities else list(qualities.keys())[0]
+        valid_qs = [q for q in available_qualities if q in resolved_sizes]
+        lowest_q = valid_qs[-1] if valid_qs else (available_qualities[-1] if available_qualities else list(qualities.keys())[0])
         url = qualities[lowest_q]
         size = resolved_sizes.get(lowest_q, 0)
         if size == 0:
