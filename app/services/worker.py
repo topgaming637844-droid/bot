@@ -450,7 +450,7 @@ async def self_heal_episode_cache(
     async with db_session_factory() as session:
         stmt = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
         res = await session.execute(stmt)
-        cache_entry = res.scalar_one_or_none()
+        cache_entry = res.scalars().first()
         
         # If no SearchCache entry, we can create a temporary mockup
         if not cache_entry:
@@ -491,7 +491,7 @@ async def self_heal_episode_cache(
                 await session.rollback()
                 stmt_retry = select(SearchCache).where(SearchCache.anilist_id == anilist_id)
                 res_retry = await session.execute(stmt_retry)
-                cache_entry = res_retry.scalar_one_or_none()
+                cache_entry = res_retry.scalars().first()
             
         anime_slug = None
         if cache_entry.title_romaji and cache_entry.title_romaji.startswith("WITANIME:"):
