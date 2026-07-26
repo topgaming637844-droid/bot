@@ -417,7 +417,7 @@ async def session_get_response(session: Any, url: str, headers: Optional[dict] =
 
 async def get_html_headless(url: str) -> str:
     """Fetches full rendered HTML content using Playwright headless browser to bypass Cloudflare 403."""
-    if not PLAYWRIGHT_AVAILABLE or not async_playwright:
+    if not async_playwright:
         return ""
     try:
         async with async_playwright() as p:
