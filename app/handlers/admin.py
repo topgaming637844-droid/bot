@@ -1915,112 +1915,217 @@ async def handle_admin_export_db(callback: CallbackQuery, db_session: AsyncSessi
     if not authorized:
         await safe_answer(callback, "❌ غير مصرح لك.", show_alert=True)
         return
-
     await safe_answer(callback)
-    status_msg = await callback.message.answer("🔄 جاري تحضير وتصدير قاعدة البيانات...")
-
-    try:
-        # ─── تحديد مسار قاعدة البيانات بشكل ديناميكي (يعمل على Railway وLocally) ───
-        db_url = config.DATABASE_URL
-        db_file_name = "bot.db"
-        if "sqlite" in db_url:
-            raw_path = db_url.split("///")[-1]
-            db_file_name = raw_path if raw_path else "bot.db"
-
-        db_path = Path(db_file_name)
-        if not db_path.is_absolute():
-            # جذر المشروع ديناميكياً بجانب config.py — يعمل على أي بيئة
-            project_root = Path(__file__).parent.parent.parent.resolve()
-            db_path = project_root / db_path
-
-        logger.info(f"[BACKUP] Resolved DB path: {db_path}")
-
-        if db_path.exists() and db_path.is_file():
-            file_size_mb = db_path.stat().st_size / (1024 * 1024)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"backup_{timestamp}_bot.db"
-
-            with open(db_path, "rb") as f:
-                file_bytes = f.read()
-
-            input_file = BufferedInputFile(file_bytes, filename=filename)
-            await callback.message.bot.send_document(
-                chat_id=callback.from_user.id,
-                document=input_file,
-                caption=(
-                    f"💾 <b>نسخة احتياطية من قاعدة البيانات</b>\n\n"
-                    f"📁 الملف: <code>{db_path.name}</code>\n"
-                    f"📦 الحجم: <code>{file_size_mb:.2f} MB</code>\n"
-                    f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
-                ),
-                parse_mode="HTML"
-            )
-            await status_msg.delete()
-            logger.info(f"[BACKUP] Database backup sent via button to admin {callback.from_user.id}")
-        else:
-            await status_msg.edit_text(
-                f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار:\n<code>{db_path}</code>",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        logger.exception("Error exporting database")
-        await status_msg.edit_text(f"❌ فشل تصدير قاعدة البيانات: {e}")
+    status_msg = await callback.message.answer("🔄 جاري تحضير نسخة احتياطية من قاعدة البيانات...")
+    file_bytes, filename, caption = await _build_db_backup()
+    if file_bytes is None:
+        await status_msg.edit_text(caption, parse_mode="HTML")
+        return
+    input_file = BufferedInputFile(file_bytes, filename=filename)
+    await callback.message.bot.send_document(
+        chat_id=callback.from_user.id,
+        document=input_file,
+        caption=caption,
+        parse_mode="HTML"
+    )
+    await status_msg.delete()
+    logger.info(f"[BACKUP] DB backup sent via button to admin {callback.from_user.id}")
 
 
-# ─────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 # ═══  أمر /backup_db المباشر — للمطور (Super Admin) فقط  ═══
-# ─────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 @router.message(Command("backup_db"))
 async def cmd_backup_db(message: Message):
-    """أمر سري للمطور: يرسل ملف قاعدة البيانات كـ Document مباشرة."""
+    """أمر سري للمطور: يرسل نسخة احتياطية من قاعدة البيانات كـ Document مباشرة."""
     if message.from_user.id != config.SUPER_ADMIN_ID:
         await message.answer("❌ هذا الأمر مخصص للمطور فقط.")
         return
-
     status_msg = await message.answer("⏳ جاري إنشاء نسخة احتياطية من قاعدة البيانات...")
+    file_bytes, filename, caption = await _build_db_backup()
+    if file_bytes is None:
+        await status_msg.edit_text(caption, parse_mode="HTML")
+        return
+    input_file = BufferedInputFile(file_bytes, filename=filename)
+    await message.answer_document(
+        document=input_file,
+        caption=caption,
+        parse_mode="HTML"
+    )
+    await status_msg.delete()
+    logger.info(f"[BACKUP] /backup_db sent successfully to admin {message.from_user.id}")
+
+
+async def _build_db_backup():
+    """
+    دالة مشتركة: تبني نسخة احتياطية من PostgreSQL أو SQLite.
+    ترجع: (file_bytes, filename, caption)
+              إذا فشل: (None, None, error_caption)
+    """
+    db_url = config.DATABASE_URL
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # ═══ PostgreSQL Backup ═══
+    if "postgresql" in db_url or "postgres" in db_url:
+        return await _backup_postgres(db_url, timestamp)
+
+    # ═══ SQLite Backup ═══
+    if "sqlite" in db_url:
+        return _backup_sqlite(db_url, timestamp)
+
+    error_msg = f"❌ نوع قاعدة البيانات غير مدعوم:\n<code>{db_url[:60]}...</code>"
+    return None, None, error_msg
+
+
+async def _backup_postgres(db_url: str, timestamp: str):
+    """
+    يتصل بـ PostgreSQL عبر asyncpg ويدمب جميع الجداول كـ SQL INSERT statements.
+    يعمل على Railway لأن البوت داخل نفس الشبكة.
+    """
+    try:
+        import asyncpg
+    except ImportError:
+        error = "❌ مكتبة asyncpg غير مثبتة.\nأضف <code>asyncpg</code> لـ requirements.txt"
+        return None, None, error
 
     try:
-        db_url = config.DATABASE_URL
-        db_file_name = "bot.db"
-        if "sqlite" in db_url:
-            raw_path = db_url.split("///")[-1]
-            db_file_name = raw_path if raw_path else "bot.db"
+        # تحويل URL لصيغة asyncpg (يزيل +aiosqlite ونحوها)
+        clean_url = db_url
+        for prefix in ["postgresql+asyncpg://", "postgresql+aiopg://", "postgres+asyncpg://"]:
+            if clean_url.startswith(prefix):
+                clean_url = "postgresql://" + clean_url[len(prefix):]
+                break
 
+        logger.info("[BACKUP] Connecting to PostgreSQL for backup...")
+        conn = await asyncpg.connect(clean_url)
+
+        lines = []
+        lines.append(f"-- PostgreSQL Backup | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"-- Database URL: {clean_url.split('@')[1] if '@' in clean_url else 'railway'}")
+        lines.append("-- Generated by Bot Backup System")
+        lines.append("")
+        lines.append("SET client_encoding = 'UTF8';")
+        lines.append("SET standard_conforming_strings = on;")
+        lines.append("")
+
+        # جلب قائمة الجداول
+        tables = await conn.fetch(
+            """
+            SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public'
+            ORDER BY tablename;
+            """
+        )
+        table_names = [row['tablename'] for row in tables]
+        logger.info(f"[BACKUP] Found {len(table_names)} tables: {table_names}")
+
+        total_rows = 0
+        for table in table_names:
+            lines.append(f"-- Table: {table}")
+
+            # جلب بنية الجدول (CREATE TABLE)
+            cols_info = await conn.fetch(
+                """
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = $1
+                ORDER BY ordinal_position;
+                """,
+                table
+            )
+
+            col_defs = []
+            for col in cols_info:
+                col_def = f"    {col['column_name']} {col['data_type']}"
+                if col['column_default']:
+                    col_def += f" DEFAULT {col['column_default']}"
+                if col['is_nullable'] == 'NO':
+                    col_def += " NOT NULL"
+                col_defs.append(col_def)
+
+            lines.append(f"CREATE TABLE IF NOT EXISTS {table} (")
+            lines.append(",\n".join(col_defs))
+            lines.append(");")
+            lines.append("")
+
+            # جلب البيانات (INSERT INTO)
+            col_names = [col['column_name'] for col in cols_info]
+            rows = await conn.fetch(f'SELECT * FROM "{table}"')
+
+            if rows:
+                col_list = ", ".join(col_names)
+                lines.append(f"INSERT INTO {table} ({col_list}) VALUES")
+                row_values = []
+                for row in rows:
+                    vals = []
+                    for v in row:
+                        if v is None:
+                            vals.append("NULL")
+                        elif isinstance(v, bool):
+                            vals.append("TRUE" if v else "FALSE")
+                        elif isinstance(v, (int, float)):
+                            vals.append(str(v))
+                        elif isinstance(v, (dict, list)):
+                            import json as _json
+                            safe = _json.dumps(v, ensure_ascii=False).replace("'", "''")
+                            vals.append(f"'{safe}'")
+                        else:
+                            safe = str(v).replace("'", "''")
+                            vals.append(f"'{safe}'")
+                    row_values.append(f"  ({', '.join(vals)})")
+                lines.append(",\n".join(row_values) + ";")
+                total_rows += len(rows)
+
+            lines.append("")
+
+        await conn.close()
+
+        sql_content = "\n".join(lines)
+        file_bytes = sql_content.encode("utf-8")
+        filename = f"backup_{timestamp}_railway.sql"
+        size_kb = len(file_bytes) / 1024
+
+        caption = (
+            f"💾 <b>نسخة احتياطية PostgreSQL</b>\n\n"
+            f"🗃 الجداول: <code>{len(table_names)}</code>\n"
+            f"📊 إجمالي الصفوف: <code>{total_rows:,}</code>\n"
+            f"📦 حجم الملف: <code>{size_kb:.1f} KB</code>\n"
+            f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+        )
+        logger.info(f"[BACKUP] PostgreSQL backup done: {len(table_names)} tables, {total_rows} rows, {size_kb:.1f} KB")
+        return file_bytes, filename, caption
+
+    except Exception as e:
+        logger.exception(f"[BACKUP] PostgreSQL backup failed: {e}")
+        return None, None, f"❌ فشل تصدير PostgreSQL:\n<code>{e}</code>"
+
+
+def _backup_sqlite(db_url: str, timestamp: str):
+    """نسخة احتياطية SQLite كملف .db ثنائي."""
+    try:
+        raw_path = db_url.split("///")[-1]
+        db_file_name = raw_path if raw_path else "bot.db"
         db_path = Path(db_file_name)
         if not db_path.is_absolute():
             project_root = Path(__file__).parent.parent.parent.resolve()
             db_path = project_root / db_path
 
-        logger.info(f"[BACKUP] /backup_db resolved DB path: {db_path}")
-
         if not db_path.exists():
-            await status_msg.edit_text(
-                f"❌ لم يتم العثور على ملف قاعدة البيانات في المسار:\n<code>{db_path}</code>",
-                parse_mode="HTML"
-            )
-            return
-
-        file_size_mb = db_path.stat().st_size / (1024 * 1024)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"backup_{timestamp}_bot.db"
+            return None, None, f"❌ لم يتم العثور على ملف SQLite:\n<code>{db_path}</code>"
 
         with open(db_path, "rb") as f:
             file_bytes = f.read()
 
-        input_file = BufferedInputFile(file_bytes, filename=filename)
-        await message.answer_document(
-            document=input_file,
-            caption=(
-                f"💾 <b>نسخة احتياطية من قاعدة البيانات</b>\n\n"
-                f"📁 الملف: <code>{db_path.name}</code>\n"
-                f"📦 الحجم: <code>{file_size_mb:.2f} MB</code>\n"
-                f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
-            ),
-            parse_mode="HTML"
+        size_mb = len(file_bytes) / (1024 * 1024)
+        filename = f"backup_{timestamp}_bot.db"
+        caption = (
+            f"💾 <b>نسخة احتياطية SQLite</b>\n\n"
+            f"📁 الملف: <code>{db_path.name}</code>\n"
+            f"📦 الحجم: <code>{size_mb:.2f} MB</code>\n"
+            f"🕒 التاريخ: <code>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
         )
-        await status_msg.delete()
-        logger.info(f"[BACKUP] /backup_db sent successfully to admin {message.from_user.id}")
-
+        return file_bytes, filename, caption
     except Exception as e:
-        logger.exception(f"[BACKUP] Failed to send database backup via /backup_db: {e}")
-        await status_msg.edit_text(f"❌ فشل إرسال قاعدة البيانات:\n<code>{e}</code>", parse_mode="HTML")
+        logger.exception(f"[BACKUP] SQLite backup failed: {e}")
+        return None, None, f"❌ فشل تصدير SQLite:\n<code>{e}</code>"
+
