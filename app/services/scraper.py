@@ -46,19 +46,27 @@ async def get_html_headless(url: str) -> str:
                 locale="en-US,en;q=0.9"
             )
             page = await context.new_page()
-            # Remove navigator.webdriver property to bypass basic Cloudflare checks
-            await page.add_init_script("delete navigator.__proto__.webdriver;")
+            # Anti-bot scripts to bypass Cloudflare basic checks
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'languages', {get: () => ['ar', 'en-US', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            """)
             
-            # Go to URL and wait for DOM Content Loaded
-            await page.goto(url, wait_until='domcontentloaded', timeout=25000)
-            # Sleep 3 seconds to let any Javascript redirection or Cloudflare page solve
-            await page.wait_for_timeout(3000)
+            try:
+                await page.goto(url, wait_until='domcontentloaded', timeout=25000)
+            except Exception:
+                pass
+                
+            await page.wait_for_timeout(3500)
             
             html = await page.content()
             await browser.close()
             return html
     except Exception as e:
         logger.warning(f"Playwright headless fetch failed for {url}: {e}")
+        return ""
+
 async def get_witanime_links_headless(url: str) -> Dict[str, str]:
     """
     Uses Playwright headless browser with network request interception and DOM inspection
@@ -430,8 +438,8 @@ async def _run_scraper_search(session: Any, title: str, search_queries: List[str
             try:
                 html = await get_html(search_url, session)
                 if html == "STATUS_403_FORBIDDEN":
-                    logger.warning(f"Domain {domain} returned 403 Forbidden. Aborting search due to Cloudflare block.")
-                    raise ScraperError(f"CLOUDFLARE_BLOCK: The helper streaming site ({domain}) is protected by Cloudflare and returned 403 Forbidden.")
+                    logger.warning(f"Domain {domain} search returned 403 Forbidden for {search_url}. Trying next...")
+                    continue
                 if not html:
                     continue
                 soup = BeautifulSoup(html, "html.parser")
@@ -482,18 +490,14 @@ async def _run_scraper_search(session: Any, title: str, search_queries: List[str
     ]
     for domain in WITANIME_DOMAINS:
         for slug_cand in slug_candidates:
+            if not slug_cand or len(slug_cand) < 2:
+                continue
             test_url = f"https://{domain}/anime/{quote(slug_cand)}/"
             try:
-                if hasattr(session, 'get') and hasattr(session, 'impersonate'):
-                    resp = await session.get(test_url, headers=get_browser_headers(test_url), timeout=5)
-                    if resp.status_code == 200:
-                        logger.info(f"Direct slug fallback matched: {test_url}")
-                        return [{"title": title, "slug": slug_cand}]
-                else:
-                    async with session.get(test_url, headers=get_browser_headers(test_url), ssl=False, timeout=5) as resp:
-                        if resp.status == 200:
-                            logger.info(f"Direct slug fallback matched: {test_url}")
-                            return [{"title": title, "slug": slug_cand}]
+                html = await get_html(test_url, session)
+                if html and html != "STATUS_403_FORBIDDEN" and ("anime-info" in html or "episode" in html or "الحلقات" in html or "/episode/" in html):
+                    logger.info(f"Direct slug fallback matched: {test_url}")
+                    return [{"title": title, "slug": slug_cand}]
             except Exception:
                 pass
 
