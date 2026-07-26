@@ -1682,8 +1682,15 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                     href = urljoin(play_url, href)
                     
                 if href.startswith("http"):
-                    if any(x in href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
+                    lower_href = href.lower()
+                    # 🛑 حظر حاسم: استبعاد روابط صفحة المشاهدة نفسها، صفحة الحلقة، التفاصيل، والشبكات الاجتماعية
+                    if any(x in lower_href for x in ["/episode/", "/anime/", "javascript:", "facebook.com", "twitter.com", "t.me", "telegram"]):
                         continue
+                    if href.rstrip("/") == play_url.rstrip("/"):
+                        continue
+                    if any(x in lower_href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
+                        continue
+
                     label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
                     q_name = normalize_quality_name(label)
                     if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
@@ -1701,19 +1708,43 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                         try:
                             logger.info(f"Following shortlink redirect for fallback download link: {href}")
                             headers = get_browser_headers(href)
+                            dest_url = None
                             if hasattr(session, 'get') and hasattr(session, 'impersonate'):
                                 resp = await session.get(href, headers=headers, timeout=8)
-                                if resp.url:
-                                    final_url = str(resp.url)
+                                text = resp.text or ""
+                                if resp.url and not any(x in str(resp.url).lower() for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/"]):
+                                    dest_url = str(resp.url)
+                                elif text:
+                                    m = re.search(r'href=["\'](https?://(?!witanime)[^"\']+)["\']', text)
+                                    if not m:
+                                        m = re.search(r'window\.location\.(?:href|replace)\s*=\s*["\']([^"\']+)["\']', text)
+                                    if m:
+                                        dest_url = m.group(1)
                             else:
                                 async with session.get(href, headers=headers, allow_redirects=True, ssl=False, timeout=8) as resp:
-                                    final_url = str(resp.url)
-                            logger.info(f"Resolved shortlink final destination: {final_url}")
+                                    text = await resp.text()
+                                    if resp.url and not any(x in str(resp.url).lower() for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/"]):
+                                        dest_url = str(resp.url)
+                                    elif text:
+                                        m = re.search(r'href=["\'](https?://(?!witanime)[^"\']+)["\']', text)
+                                        if not m:
+                                            m = re.search(r'window\.location\.(?:href|replace)\s*=\s*["\']([^"\']+)["\']', text)
+                                        if m:
+                                            dest_url = m.group(1)
+
+                            if dest_url:
+                                logger.info(f"Resolved shortlink final destination: {dest_url}")
+                                final_url = dest_url
+                            else:
+                                logger.warning(f"Could not resolve destination for shortlink {href}, skipping.")
+                                continue
                         except Exception as ex:
                             logger.warning(f"Failed resolving shortlink redirect for {href}: {ex}")
+                            continue
 
-                    if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
-                        resolved_links[q_name] = final_url
+                    if final_url and not any(x in final_url.lower() for x in ["/episode/", "/anime/"]):
+                        if q_name not in resolved_links or "go.witanime" in resolved_links[q_name]:
+                            resolved_links[q_name] = final_url
 
     # ──── Brute-Force Fallback (استخراج عنيف من <iframe> وحاويات episode-servers) ────
     if not resolved_links:
@@ -1727,6 +1758,8 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                     src = urljoin(play_url, src)
                 if src.startswith("http"):
                     lower_src = src.lower()
+                    if any(x in lower_src for x in ["/episode/", "/anime/"]):
+                        continue
                     if any(k in lower_src for k in ["embed", "player", "vid", "watch", "stream", "yona", "videa", "soraplay", "hanerix", "mp4upload", "drive", "ok.ru"]):
                         q_name = "720p"
                         if "1080" in lower_src or "fhd" in lower_src:
@@ -1754,6 +1787,11 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                     elif not url_val.startswith("http"):
                         url_val = urljoin(play_url, url_val)
                     if url_val.startswith("http"):
+                        lower_val = url_val.lower()
+                        if any(x in lower_val for x in ["/episode/", "/anime/", "javascript:", "facebook.com", "twitter.com"]):
+                            continue
+                        if url_val.rstrip("/") == play_url.rstrip("/"):
+                            continue
                         label = (el.text or "").strip() + " " + " ".join(el.get("class", [])) + " " + (el.get("data-server") or "")
                         q_name = normalize_quality_name(label)
                         if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
