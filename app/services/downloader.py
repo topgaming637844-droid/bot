@@ -512,25 +512,45 @@ async def download_hls(
                 return False
 
             # 🎬 تحويل ملف HLS المدمج إلى صيغة MP4 قياسية عبر FFmpeg لضمان تشغيله المباشر 100% على كافة الأجهزة والتليجرام
+            remux_success = False
             try:
                 logger.info("Executing fast FFmpeg MP4 remuxing for standard playback compatibility...")
                 ffmpeg_proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y", "-fflags", "+genpts", "-i", str(raw_ts_path),
+                    "ffmpeg", "-y", "-i", str(raw_ts_path),
                     "-c", "copy",
-                    "-bsf:a", "aac_adtstoasc",
                     "-movflags", "+faststart",
                     str(target_path),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                _, _ = await ffmpeg_proc.communicate()
-                if ffmpeg_proc.returncode != 0 or not target_path.exists() or os.path.getsize(target_path) == 0:
-                    logger.warning("FFmpeg remuxing returned non-zero code. Falling back to direct raw rename.")
-                    if raw_ts_path.exists():
-                        import shutil as _sh
-                        _sh.move(str(raw_ts_path), str(target_path))
+                _, stderr = await ffmpeg_proc.communicate()
+                if ffmpeg_proc.returncode == 0 and target_path.exists() and os.path.getsize(target_path) > 1000000:
+                    remux_success = True
+                    logger.info(f"FFmpeg MP4 remuxing succeeded! Final video size: {os.path.getsize(target_path)/(1024*1024):.2f} MB")
+                else:
+                    err_msg = stderr.decode('utf-8', errors='ignore') if stderr else 'Unknown error'
+                    logger.warning(f"FFmpeg copy remux failed (code {ffmpeg_proc.returncode}): {err_msg[:200]}. Trying audio transcode fallback...")
+                    # Stage 2: Re-encode audio to AAC if audio stream is non-standard
+                    ffmpeg_proc2 = await asyncio.create_subprocess_exec(
+                        "ffmpeg", "-y", "-i", str(raw_ts_path),
+                        "-c:v", "copy", "-c:a", "aac",
+                        "-movflags", "+faststart",
+                        str(target_path),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    _, stderr2 = await ffmpeg_proc2.communicate()
+                    if ffmpeg_proc2.returncode == 0 and target_path.exists() and os.path.getsize(target_path) > 1000000:
+                        remux_success = True
+                        logger.info(f"FFmpeg AAC audio transcode remuxing succeeded! Size: {os.path.getsize(target_path)/(1024*1024):.2f} MB")
+                    else:
+                        err_msg2 = stderr2.decode('utf-8', errors='ignore') if stderr2 else 'Unknown error'
+                        logger.warning(f"FFmpeg Stage 2 remux failed: {err_msg2[:200]}")
             except Exception as ffmpeg_err:
-                logger.warning(f"FFmpeg remuxing exception: {ffmpeg_err}. Using direct file.")
+                logger.warning(f"FFmpeg remuxing exception: {ffmpeg_err}")
+
+            if not remux_success:
+                logger.warning("FFmpeg remuxing could not process raw stream. Using raw TS file rename.")
                 if raw_ts_path.exists():
                     import shutil as _sh
                     _sh.move(str(raw_ts_path), str(target_path))
