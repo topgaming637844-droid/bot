@@ -59,8 +59,92 @@ async def get_html_headless(url: str) -> str:
             return html
     except Exception as e:
         logger.warning(f"Playwright headless fetch failed for {url}: {e}")
-        return ""
+async def get_witanime_links_headless(url: str) -> Dict[str, str]:
+    """
+    Uses Playwright headless browser with network request interception and DOM inspection
+    to resolve WitAnime video links when static scraping fails.
+    """
+    resolved = {}
+    captured_urls = []
+    try:
+        from app.utils.user_agents import get_random_user_agent
+        user_agent = get_random_user_agent()
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-infobars',
+                    '--disable-dev-shm-usage',
+                ]
+            )
+            context = await browser.new_context(
+                user_agent=user_agent,
+                viewport={'width': 1280, 'height': 720},
+                device_scale_factor=1,
+                is_mobile=False,
+                has_touch=False,
+                locale="en-US,en;q=0.9"
+            )
+            page = await context.new_page()
+            await page.add_init_script("delete navigator.__proto__.webdriver;")
+            
+            def handle_request(req):
+                u = req.url
+                if any(ext in u.lower() for ext in ['.m3u8', '.mp4', 'gofile.io', 'mp4upload.com', 'streamwish', 'yona', 'videa']):
+                    if u not in captured_urls and not u.startswith('data:'):
+                        captured_urls.append(u)
+            
+            page.on("request", handle_request)
+            
+            await page.goto(url, wait_until='domcontentloaded', timeout=25000)
+            await page.wait_for_timeout(4000)
+            
+            content = await page.content()
+            await browser.close()
+            
+            soup = BeautifulSoup(content, "html.parser")
+            
+            # Check for download buttons or direct links in rendered HTML
+            download_btns = soup.select(".download-links a, table.download-table a, a.download-link, .download-item a, .download-list a, .dlinks a, .quality-download a, .quality-box a")
+            if not download_btns:
+                download_btns = soup.find_all("a", href=lambda h: h and any(x in str(h).lower() for x in ["go.witanime", "/go/", "download", "mp4upload", "mega", "drive", "gofile", "videa", "ok.ru"]))
+            if not download_btns:
+                download_btns = soup.find_all("a", href=True)
+                
+            for a in download_btns:
+                href = a.get("href")
+                if href and href.startswith("http") and not any(x in href for x in ["mega.nz", "drive.google.com", "witanime.pics/episode", "witanime.life/episode"]):
+                    label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
+                    q_name = normalize_quality_name(label)
+                    if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
+                        q_name = "480p"
+                    if q_name not in resolved:
+                        resolved[q_name] = href
+                        
+            # Add network captured stream/download URLs
+            for u in captured_urls:
+                lower_u = u.lower()
+                q_name = "480p"
+                if "1080" in lower_u or "fhd" in lower_u:
+                    q_name = "1080p"
+                elif "720" in lower_u or "hd" in lower_u:
+                    q_name = "720p"
+                elif "360" in lower_u or "sd" in lower_u:
+                    q_name = "360p"
+                if q_name not in resolved:
+                    resolved[q_name] = u
+
+    except Exception as e:
+        logger.warning(f"get_witanime_links_headless failed for {url}: {e}")
+        
+    return resolved
+
+
 # ===== تعريف المتغيرات أولاً مع قيم افتراضية =====
+
 CURL_CFFI_AVAILABLE = False
 CurlAsyncSession = None
 
@@ -1438,8 +1522,16 @@ async def _run_get_download_links(session: Any, play_url: str) -> Dict[str, str]
                 if resolved_links:
                     logger.info(f"Successfully resolved {len(resolved_links)} download link qualities from blind regex harvest on {domain}")
                     return resolved_links
+
+                # 4. Try Playwright network interception + DOM harvest
+                logger.info(f"Executing Playwright network interception fallback for {target_url}...")
+                resolved_links = await get_witanime_links_headless(target_url)
+                if resolved_links:
+                    logger.info(f"Playwright network interception resolved {len(resolved_links)} download link qualities on {domain}")
+                    return resolved_links
             except Exception as e:
                 logger.exception(f"Error processing watch page domain mirror {target_url}: {e}")
+
 
                 
         logger.warning(f"All standard parsing and blind regex harvesting mirrors failed for: {play_url}")
@@ -1583,8 +1675,7 @@ async def _parse_standard_watch_page(html: str, soup: BeautifulSoup, session: An
                 # تخطي الروابط غير المدعومة
                 if any(x in href for x in ["mega.nz", "drive.google.com", "4shared", "gofile"]):
                     continue
-                # باقي الكود...
-                    
+                label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
                 q_name = normalize_quality_name(label)
                 if q_name not in ["1080p", "720p", "480p", "360p", "240p"]:
                     if "1080" in label or "fhd" in label or "جودة خارقة" in label:
