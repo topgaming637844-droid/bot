@@ -476,9 +476,10 @@ async def download_hls(
             
             logger.info(f"Merging {total_segments} HLS segments from disk...")
             
+            raw_ts_path = temp_dir / "merged_raw.ts"
             def merge_files():
                 nonlocal downloaded_bytes, completed_segments_count
-                with open(target_path, "wb", buffering=1024*1024) as outfile:
+                with open(raw_ts_path, "wb", buffering=1024*1024) as outfile:
                     for idx in range(total_segments):
                         seg_file = temp_dir / f"seg_{idx}.ts"
                         if not seg_file.exists():
@@ -495,6 +496,29 @@ async def download_hls(
             except Exception as merge_err:
                 logger.error(f"Failed to merge HLS segments: {merge_err}")
                 return False
+
+            # 🎬 تحويل ملف HLS المدمج إلى صيغة MP4 قياسية عبر FFmpeg لضمان تشغيله المباشر 100% على كافة الأجهزة والتليجرام
+            try:
+                logger.info("Executing fast FFmpeg MP4 remuxing for standard playback compatibility...")
+                ffmpeg_proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y", "-i", str(raw_ts_path),
+                    "-c", "copy",
+                    "-movflags", "+faststart",
+                    str(target_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                _, _ = await ffmpeg_proc.communicate()
+                if ffmpeg_proc.returncode != 0 or not target_path.exists() or os.path.getsize(target_path) == 0:
+                    logger.warning("FFmpeg remuxing returned non-zero code. Falling back to direct raw rename.")
+                    if raw_ts_path.exists():
+                        import shutil as _sh
+                        _sh.move(str(raw_ts_path), str(target_path))
+            except Exception as ffmpeg_err:
+                logger.warning(f"FFmpeg remuxing exception: {ffmpeg_err}. Using direct file.")
+                if raw_ts_path.exists():
+                    import shutil as _sh
+                    _sh.move(str(raw_ts_path), str(target_path))
             
             speed = downloaded_bytes / elapsed if elapsed > 0 else 0
             speed_mb = speed / (1024 * 1024)
