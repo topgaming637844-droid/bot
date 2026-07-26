@@ -193,6 +193,40 @@ def get_default_estimated_size(quality_hint: str = "720p") -> int:
         return 120 * 1024 * 1024
     return 350 * 1024 * 1024
 
+AD_DOMAINS = [
+    'a-ads', 'ad-ads', 'googleads', 'doubleclick', 'adsterra', 'exoclick',
+    'popads', 'propeller', 'yandex', 'analytics', 'histats', 'statcounter',
+    'facebook', 'twitter', 'disqus', 'syndication', 'criteo', 'taboola',
+    'outbrain', 'adnxs', 'amazon-adsystem', 'widget', 'banner', 'ads.',
+    'acceptable.a-ads.com', 'a-ads.com', 'popunder', 'clickahead'
+]
+
+async def resolve_embed_to_media_url(url: str) -> str:
+    """
+    If url is an embed page or shortlink (e.g. yonaplay, videa, streamwish, mp4upload, /go/),
+    extracts the underlying .m3u8, .mp4, or stream URL.
+    """
+    lower_url = url.lower()
+    if ".m3u8" in lower_url or ".mp4" in lower_url or ".mkv" in lower_url:
+        return url
+        
+    if not any(k in lower_url for k in ["embed", "player", "yona", "videa", "streamwish", "mp4upload", "gofile", "hanerix", "soraplay", "/go/", "go.witanime"]):
+        return url
+        
+    logger.info(f"Resolving embed/shortlink URL to direct video/stream: {url}")
+    try:
+        from app.services.scraper import get_m3u8_from_embed
+        connector = get_session_connector(limit=5)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            stream_url = await get_m3u8_from_embed(url, session, referer=url)
+            if stream_url and stream_url.startswith("http"):
+                logger.info(f"Successfully resolved embed {url} to stream: {stream_url}")
+                return stream_url
+    except Exception as e:
+        logger.warning(f"Failed to resolve embed {url}: {e}")
+        
+    return url
+
 async def select_best_quality(qualities: Dict[str, str], requested_quality: str = "auto") -> Tuple[str, str, int]:
     """
     Smart Size Logic:
@@ -210,6 +244,9 @@ async def select_best_quality(qualities: Dict[str, str], requested_quality: str 
         for q in available_qualities:
             url = qualities[q]
             lower_u = url.lower()
+            if any(ad in lower_u for ad in AD_DOMAINS):
+                logger.warning(f"Rejecting known ad URL in downloader: {url}")
+                continue
             if any(x in lower_u for x in ["/episode/", "/anime/"]) and not ".m3u8" in lower_u and not ".mp4" in lower_u:
                 logger.warning(f"Skipping non-media HTML watch page URL in downloader: {url}")
                 continue
@@ -597,6 +634,9 @@ async def download_file(
     """
     Downloads a file (direct link or HLS stream) and updates progress.
     """
+    # 🔗 فك السيرفر المضمن أو رابط الاختصار إلى رابط ميديا مباشر/بث مسبقاً
+    url = await resolve_embed_to_media_url(url)
+
     if ".m3u8" in url or "master" in url or "stream" in url:
         return await download_hls(url, target_path, status_message, quality)
 
