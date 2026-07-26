@@ -67,6 +67,14 @@ async def get_html_headless(url: str) -> str:
         logger.warning(f"Playwright headless fetch failed for {url}: {e}")
         return ""
 
+AD_DOMAINS = [
+    'a-ads', 'ad-ads', 'googleads', 'doubleclick', 'adsterra', 'exoclick',
+    'popads', 'propeller', 'yandex', 'analytics', 'histats', 'statcounter',
+    'facebook', 'twitter', 'disqus', 'syndication', 'criteo', 'taboola',
+    'outbrain', 'adnxs', 'amazon-adsystem', 'widget', 'banner', 'ads.',
+    'acceptable.a-ads.com', 'a-ads.com', 'popunder', 'clickahead'
+]
+
 async def get_witanime_links_headless(url: str) -> Dict[str, str]:
     """
     Uses Playwright headless browser with network request interception, automated DOM server clicking,
@@ -102,6 +110,8 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
             def handle_request(req):
                 u = req.url
                 lower_u = u.lower()
+                if any(ad in lower_u for ad in AD_DOMAINS):
+                    return
                 if any(ext in lower_u for ext in ['.m3u8', '.mp4', 'gofile.io', 'mp4upload.com', 'streamwish', 'yona', 'yonaplay', 'videa', 'archive.org', 'hanerix', 'soraplay']):
                     if u not in captured_urls and not u.startswith('data:'):
                         captured_urls.append(u)
@@ -127,13 +137,14 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
             except Exception as click_err:
                 logger.warning(f"Playwright clicking server tabs error: {click_err}")
 
-            # فحص إطارات الصفحة بعد التفاعل
+            # فحص إطارات الصفحة بعد التفاعل (مع استبعاد الإعلانات)
             try:
                 for frame in page.frames:
                     f_url = frame.url
                     if f_url and f_url != "about:blank" and f_url != url:
-                        if f_url not in captured_urls:
-                            captured_urls.append(f_url)
+                        if not any(ad in f_url.lower() for ad in AD_DOMAINS):
+                            if f_url not in captured_urls:
+                                captured_urls.append(f_url)
             except Exception:
                 pass
 
@@ -160,6 +171,8 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
                         lower_h = href.lower()
                         if any(x in lower_h for x in ["/episode/", "/anime/", "javascript:", "facebook.com", "twitter.com", "t.me", "telegram"]):
                             continue
+                        if any(ad in lower_h for ad in AD_DOMAINS):
+                            continue
                         if href.rstrip("/") == url.rstrip("/"):
                             continue
                         label = (a.text or "").strip() + " " + " ".join(a.get("class", [])) + " " + (a.parent.text if a.parent else "")
@@ -169,10 +182,12 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
                         if q_name not in resolved:
                             resolved[q_name] = href
                         
-            # Add network captured stream/download URLs
+            # Add network captured stream/download URLs (filtering out ads)
             for u in captured_urls:
                 lower_u = u.lower()
                 if any(x in lower_u for x in ["/episode/", "/anime/", "witanime.pics/go/", "witanime.life/go/"]):
+                    continue
+                if any(ad in lower_u for ad in AD_DOMAINS):
                     continue
                 q_name = "480p"
                 if "1080" in lower_u or "fhd" in lower_u:
