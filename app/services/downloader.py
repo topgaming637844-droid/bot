@@ -360,26 +360,40 @@ async def download_hls(
                     return False
                 text = await resp.text()
 
-            # 🔗 فك قوائم تشغيل HLS الرئيسية (Master Playlists) إلى قوائم الفيديو الفرعية الإشهارية (Media Variant Playlists)
+            # 🔗 فك قوائم تشغيل HLS الرئيسية (Master Playlists) إلى قوائم الفيديو الفرعية الإشهارية
             max_master_depth = 3
             while max_master_depth > 0 and "#EXT-X-STREAM-INF" in text:
                 max_master_depth -= 1
-                variant_urls = []
+                variant_items = []
                 m_lines = text.splitlines()
                 for idx, l in enumerate(m_lines):
                     l = l.strip()
                     if l.startswith("#EXT-X-STREAM-INF"):
+                        inf_header = l
                         for next_l in m_lines[idx+1:]:
                             next_l = next_l.strip()
                             if next_l and not next_l.startswith("#"):
-                                variant_urls.append(urljoin(m3u8_url, next_l))
+                                variant_items.append((inf_header, urljoin(m3u8_url, next_l)))
                                 break
-                if not variant_urls:
+                if not variant_items:
                     break
                     
-                # التوجه لأول قائمة تشغيل فرعية تحتوي على الفيديو المباشر
-                m3u8_url = variant_urls[0]
-                logger.info(f"Resolved HLS Master Playlist variant target: {m3u8_url}")
+                # 🎯 اختيار الجودة المطابقة تماماً للجودة المطلوبة من المستخدم (مثلاً 1080p أو 720p)
+                selected_variant_url = None
+                target_q_num = str(quality).lower().replace("p", "").strip() if quality else ""
+                
+                if target_q_num and target_q_num.isdigit():
+                    for inf_h, v_url in variant_items:
+                        if target_q_num in inf_h or target_q_num in v_url:
+                            selected_variant_url = v_url
+                            break
+                            
+                # إذا لم يُعثر على تطابق مباشر، اختر أعلى جودة متوفرة (التي توجد عادة في نهاية القائمة)
+                if not selected_variant_url:
+                    selected_variant_url = variant_items[-1][1]
+                    
+                m3u8_url = selected_variant_url
+                logger.info(f"Resolved HLS Master Playlist target for quality [{quality}]: {m3u8_url}")
                 async with session.get(m3u8_url, headers=headers, ssl=False, timeout=15) as resp:
                     if resp.status != 200:
                         logger.error(f"Failed to fetch HLS variant playlist {m3u8_url}: HTTP {resp.status}")
@@ -501,8 +515,9 @@ async def download_hls(
             try:
                 logger.info("Executing fast FFmpeg MP4 remuxing for standard playback compatibility...")
                 ffmpeg_proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y", "-i", str(raw_ts_path),
+                    "ffmpeg", "-y", "-fflags", "+genpts", "-i", str(raw_ts_path),
                     "-c", "copy",
+                    "-bsf:a", "aac_adtstoasc",
                     "-movflags", "+faststart",
                     str(target_path),
                     stdout=asyncio.subprocess.PIPE,
