@@ -359,6 +359,32 @@ async def download_hls(
                     logger.error(f"Error in process: failed to fetch playlist {m3u8_url}, status {resp.status}")
                     return False
                 text = await resp.text()
+
+            # 🔗 فك قوائم تشغيل HLS الرئيسية (Master Playlists) إلى قوائم الفيديو الفرعية الإشهارية (Media Variant Playlists)
+            max_master_depth = 3
+            while max_master_depth > 0 and "#EXT-X-STREAM-INF" in text:
+                max_master_depth -= 1
+                variant_urls = []
+                m_lines = text.splitlines()
+                for idx, l in enumerate(m_lines):
+                    l = l.strip()
+                    if l.startswith("#EXT-X-STREAM-INF"):
+                        for next_l in m_lines[idx+1:]:
+                            next_l = next_l.strip()
+                            if next_l and not next_l.startswith("#"):
+                                variant_urls.append(urljoin(m3u8_url, next_l))
+                                break
+                if not variant_urls:
+                    break
+                    
+                # التوجه لأول قائمة تشغيل فرعية تحتوي على الفيديو المباشر
+                m3u8_url = variant_urls[0]
+                logger.info(f"Resolved HLS Master Playlist variant target: {m3u8_url}")
+                async with session.get(m3u8_url, headers=headers, ssl=False, timeout=15) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Failed to fetch HLS variant playlist {m3u8_url}: HTTP {resp.status}")
+                        return False
+                    text = await resp.text()
                 
             lines = text.splitlines()
             segment_urls = []
