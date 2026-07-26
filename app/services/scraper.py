@@ -112,6 +112,8 @@ async def get_witanime_links_headless(url: str) -> Dict[str, str]:
                 lower_u = u.lower()
                 if any(ad in lower_u for ad in AD_DOMAINS):
                     return
+                if any(ext in lower_u for ext in ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.ttf', '.html']):
+                    return
                 if any(ext in lower_u for ext in ['.m3u8', '.mp4', 'gofile.io', 'mp4upload.com', 'streamwish', 'yona', 'yonaplay', 'videa', 'archive.org', 'hanerix', 'soraplay']):
                     if u not in captured_urls and not u.startswith('data:'):
                         captured_urls.append(u)
